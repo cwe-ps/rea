@@ -25,14 +25,18 @@ rea inspect-business-rules-program ./PAYROLL.WB --json
   codes apply, and the offset/size of the execution, line-table, symbol and
   saved-LIST sections.
 - `listing`: `status` is `decoded`, `absent`, `unsupported` or `malformed`.
-  A decoded listing names its `basis`; today that is always `saved-list`, the
-  tokenized LIST representation the compiler keeps beside the execution
-  stream. `execution-stream` is reserved for a future decoder of programs whose
-  saved LIST was removed. Each line has its program `number`, reconstructed
-  `text` (statement continuations such as `!:` keep their embedded newlines),
-  the absolute `record_offset` of its saved record, and whether that record is
-  `embedded` in the execution section (as DIM records are). Unresolved keyword
-  codes stay visible as `[[gg:cc]]` and are listed in `unresolved_keywords`.
+  A decoded listing names its `basis`: `saved-list` when the program keeps the
+  tokenized LIST the compiler stores beside the execution stream (always
+  preferred when present), or `execution-stream` when that LIST was removed
+  (see [Stripped programs](#stripped-programs)). Each line has its program
+  `number`, reconstructed `text` (statement continuations such as `!:` keep
+  their embedded newlines), the absolute `record_offset` of its source, and
+  whether that source is `embedded` in the execution section. For `saved-list`
+  the offset is the saved record; for `execution-stream` it is the line's
+  compiled code, or the embedded DIM/DATA source record (`embedded: true`).
+  Unresolved saved-LIST keyword codes stay visible as `[[gg:cc]]` and are
+  listed in `unresolved_keywords`; execution-stream unknowns are listed per
+  line in `unknown_markers` (`{ line, marker }`).
 - `symbols`: modern symbol slots with index, offset, name (`null` for nameless
   constants), observed kind (`scalar`, `array`, `function`, `string-constant`,
   `numeric-constant`), value type, raw attribute flags, declared width,
@@ -48,10 +52,42 @@ rea inspect-business-rules-program ./PAYROLL.WB --json
 
 ## Stripped programs
 
-Many deployed programs have a zero-length saved LIST. They still return the
-header, symbols and string constants, with `listing.status: "absent"`,
-`listing.basis: null`, and unknown references. REA does not scan surviving
-names or comments to imitate a listing.
+Many deployed programs have a zero-length saved LIST. For the modern layout,
+REA then decompiles the execution stream in process, using the line table for
+program order and jump targets and the symbol table for operands, and returns
+`listing.basis: "execution-stream"` with references derived from the decompiled
+OPEN, CHAIN, LIBRARY and DEF statements.
+
+The execution stream is postfix stack code: an operand group (count, then
+little-endian u16 operands where `0x100 + i` is symbol slot `i`) starts each
+statement, op bytes carry a six-bit opcode and a two-bit mode, and jump
+operands are line-table positions. DIM and DATA lines keep their source record
+after their code even in stripped programs and are rendered from it.
+
+What the execution stream does not store cannot be recovered:
+
+- comments and REM text (comment-only lines appear as `!`) and labels (all
+  jump targets are shown as line numbers);
+- keyword abbreviations (`PR`/`PRINT`), implicit versus explicit `LET`,
+  identifier case, quote style, redundant parentheses (minimal parentheses are
+  emitted by precedence), numeric literal spelling (`.5`), `==`/`=>` aliases,
+  `udim(mat X)` versus `udim(X)` and explicit default `*18` lengths;
+- indentation, which is synthesized at two spaces per block level.
+
+Execution-stream text follows the reference decoder's default case convention:
+keywords and builtin functions lowercase, other identifiers Title_Case per
+underscore-separated part (`CUSTOMER_NAME$` becomes `Customer_Name$`), string
+literals double-quoted with doubled embedded quotes. There is no case option.
+Instructions REA does not recognize stay in the text as `<?...>` markers (for
+example `<?X06/0>` for an unknown expression op), and a line whose code cannot
+be parsed is kept as `! <undecodable: kind> hex`; both are listed in
+`unknown_markers`.
+
+Programs with the legacy little-endian layout and no saved LIST keep
+`listing.status: "absent"` with header and section layout; REA has no
+execution-stream or symbol decoder for that layout. If the symbol table or line
+table of a stripped program is damaged, the listing is `malformed` with the
+reason, and references are unknown.
 
 ## Failures
 
@@ -68,11 +104,13 @@ Compiled LIST stores canonical uppercase keywords and identifiers. Original
 case, abbreviations (`PR` becomes `PRINT`), implicit assignments (shown with
 `LET`), Lexi preprocessing and comments removed before compilation are not
 recoverable. Some keyword spellings are inferred from compiled-only examples.
-Execution-stream instructions are not decoded.
+Execution-stream limits are listed under [Stripped programs](#stripped-programs).
 
 ## Verification
 
 `npm run verify:business-rules` compares every `.br`/`.wb` program under
 `REA_BR_CORPUS` with a reference decoder selected by
-`REA_BR_REFERENCE_DECODER`, and checks CLI/MCP equivalence on samples. It
+`REA_BR_REFERENCE_DECODER`, for saved-LIST and execution-stream listings and,
+with `REA_BR_COMPARE=from-exec`, REA's execution-stream decoder on programs
+that also keep a saved LIST. It checks CLI/MCP equivalence on samples and
 reports counts and file names only; see [testing](testing.md).

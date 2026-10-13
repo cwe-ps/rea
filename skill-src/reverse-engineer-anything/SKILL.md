@@ -107,8 +107,10 @@ explicit path or endpoint and do not need it.
 - Compiled Business Rules! program (`.br`/`.wb`): `inspect_business_rules_program`.
   It returns the header, the numbered listing reconstructed from the saved LIST,
   modern symbols and string constants, and OPEN/CHAIN/LIBRARY/DEF references
-  derived from that listing. Stripped programs report `listing.status: "absent"`
-  with header and symbols intact; do not treat absent text as an empty program. See the
+  derived from that listing. Stripped programs are decompiled from the execution
+  stream (`listing.basis: "execution-stream"`): comments and labels are gone, jump
+  targets are line numbers, and `listing.unknown_markers` lists undecoded
+  instructions; do not read missing comments as an empty program. See the
   [Business Rules! guide](https://github.com/morluto/rea/blob/main/docs/business-rules-program.md).
 - Explicit Linux ELF file for offline layout, symbols, relocations or static
   mitigation evidence: `inspect_binary_layout`. This target-free operation uses
