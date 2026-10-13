@@ -161,3 +161,34 @@ export const deriveBusinessRulesReferences = (
     }
   return references;
 };
+
+const REFERENCE_KEYWORDS = Object.values(REFERENCE_STATEMENTS).map((code) => ({
+  code,
+  word: businessRulesKeyword(1, code),
+}));
+
+/**
+ * Re-tokenize decompiled statement texts (uppercase, before output case
+ * conversion) so references derive through the same projection as saved-LIST
+ * records. Only reference-bearing statements are kept.
+ */
+export const executionReferenceRecords = (
+  lines: readonly {
+    readonly number: number;
+    readonly statements: readonly string[];
+  }[],
+): BusinessRulesTokenizedRecord[] =>
+  lines.map(({ number, statements }) => ({
+    number,
+    tokens: statements.flatMap((statement): BusinessRulesToken[] => {
+      const keyword = REFERENCE_KEYWORDS.find(
+        ({ word }) => statement === word || statement.startsWith(`${word} `),
+      );
+      return keyword === undefined
+        ? []
+        : [
+            { group: 1, code: keyword.code },
+            { group: 5, text: statement.slice(keyword.word.length).trim() },
+          ];
+    }),
+  }));

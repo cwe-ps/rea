@@ -142,57 +142,58 @@ describe("Business Rules! saved-LIST decoding", () => {
   });
 });
 
-describe("Business Rules! symbols and stripped programs", () => {
-  const symbols = Buffer.concat([
-    symbol("", 0x2040, float64(93)),
-    symbol("MAT A", 0x005a, u32(3, 4), { tag: 1 }),
-    symbol("", 0x6040, Buffer.concat([u32(2), Buffer.from("hi")]), {
-      width: 2,
-    }),
-    Buffer.from([0]),
-    symbol("FNX$", 0xc048),
-  ]);
-  const data = modernProgram(
-    [
-      {
-        number: 10,
-        body: body(
-          0x01,
-          0x12,
-          "#",
-          run(5, "1"),
-          ": ",
-          run(5, '"NAME=DATA/CUST.DAT,SHR"'),
-          ",",
-          0x02,
-          0x19,
-          ",",
-          0x02,
-          0x1a,
-        ),
-      },
-      {
-        number: 20,
-        body: body(
-          0x01,
-          0x0d,
-          run(5, '"LIB/UTIL"'),
-          ": ",
-          run(5, "FNA,FNB$"),
-          " ",
-          run(6, "! helpers"),
-        ),
-      },
-      { number: 30, body: body(0x01, 0x26, 0x02, 0x6f, run(5, "FNX$(A$)")) },
-      { number: 40, body: body(0x01, 0x31, run(5, '"MENU"')) },
-      {
-        number: 50,
-        body: body(0x01, 0x12, "#", run(5, "H:=FNH"), ": ", run(5, "F$")),
-      },
-    ],
-    { symbols, symbolSlots: 5 },
-  );
+// Shared fixture: symbols, OPEN/LIBRARY/DEF/CHAIN records and a saved LIST.
+const symbols = Buffer.concat([
+  symbol("", 0x2040, float64(93)),
+  symbol("MAT A", 0x005a, u32(3, 4), { tag: 1 }),
+  symbol("", 0x6040, Buffer.concat([u32(2), Buffer.from("hi")]), {
+    width: 2,
+  }),
+  Buffer.from([0]),
+  symbol("FNX$", 0xc048),
+]);
+const data = modernProgram(
+  [
+    {
+      number: 10,
+      body: body(
+        0x01,
+        0x12,
+        "#",
+        run(5, "1"),
+        ": ",
+        run(5, '"NAME=DATA/CUST.DAT,SHR"'),
+        ",",
+        0x02,
+        0x19,
+        ",",
+        0x02,
+        0x1a,
+      ),
+    },
+    {
+      number: 20,
+      body: body(
+        0x01,
+        0x0d,
+        run(5, '"LIB/UTIL"'),
+        ": ",
+        run(5, "FNA,FNB$"),
+        " ",
+        run(6, "! helpers"),
+      ),
+    },
+    { number: 30, body: body(0x01, 0x26, 0x02, 0x6f, run(5, "FNX$(A$)")) },
+    { number: 40, body: body(0x01, 0x31, run(5, '"MENU"')) },
+    {
+      number: 50,
+      body: body(0x01, 0x12, "#", run(5, "H:=FNH"), ": ", run(5, "F$")),
+    },
+  ],
+  { symbols, symbolSlots: 5 },
+);
 
+describe("Business Rules! symbols and references", () => {
   it("classifies modern symbols, dimensions and constants", () => {
     const program = decode(data);
     expect(program.symbols.status).toBe("decoded");
@@ -278,16 +279,31 @@ describe("Business Rules! symbols and stripped programs", () => {
       functions_defined: [{ line: 30, name: "FNX$", library: true }],
     });
   });
+});
 
-  it("returns header, symbols and constants with an explicit unknown listing when stripped", () => {
+describe("Business Rules! stripped programs", () => {
+  it("prefers the saved LIST and decodes the execution stream once it is removed", () => {
+    expect(decode(data).listing.basis).toBe("saved-list");
     const program = decode(stripListing(data));
+    // The fixture's execution code is a bare separator per line.
     expect(program.listing).toMatchObject({
-      status: "absent",
-      basis: null,
-      lines: [],
+      status: "decoded",
+      basis: "execution-stream",
+      unknown_markers: [],
     });
-    expect(program.listing.reason).toMatch(/stripped/u);
-    expect(program.references.status).toBe("unknown");
+    expect(
+      program.listing.lines.map(({ number, text }) => [number, text]),
+    ).toEqual([
+      [10, "!"],
+      [20, "!"],
+      [30, "!"],
+      [40, "!"],
+      [50, "!"],
+    ]);
+    expect(program.references).toMatchObject({
+      status: "derived",
+      files_opened: [],
+    });
     expect(program.symbols.entries).toHaveLength(4);
     expect(program.string_constants.values).toEqual([
       { symbol_index: 2, value: "hi" },

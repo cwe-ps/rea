@@ -1,8 +1,8 @@
-/** In-process saved-LIST decoder; no Business Rules! runtime is launched or required. */
+/** In-process saved-LIST and execution-stream decoder; no Business Rules! runtime is launched or required. */
 export const BUSINESS_RULES_PROVIDER_IDENTITY = {
   id: "business-rules-program",
   name: "REA Business Rules! program decoder",
-  version: "saved-list-1",
+  version: "saved-list-1+execution-stream-1",
 } as const;
 
 /** Complete-input budget; the largest observed compiled programs are under 3 MiB. */

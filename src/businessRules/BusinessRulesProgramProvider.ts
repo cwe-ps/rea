@@ -29,11 +29,14 @@ import {
   readBusinessRulesSymbols,
   renderBusinessRulesTokens,
   tokenizeBusinessRulesRecord,
+  type BusinessRulesFormatFailure,
   type BusinessRulesHeader,
   type BusinessRulesSymbolRecord,
 } from "./BusinessRulesDecoder.js";
+import { decodeBusinessRulesExecution } from "./BusinessRulesExecutionListing.js";
 import {
   deriveBusinessRulesReferences,
+  executionReferenceRecords,
   type BusinessRulesTokenizedRecord,
 } from "./BusinessRulesReferences.js";
 import {
@@ -48,11 +51,21 @@ import {
 const OPERATION = "inspect_business_rules_program";
 
 const BASE_LIMITATIONS = [
+  "References are derived from decoded listing statements (OPEN, CHAIN, LIBRARY, DEF). Computed operands are reported unevaluated; OPEN entries include screen/window opens as well as files.",
+  "Header version/option bytes and most line-table and symbol attribute bits are reported raw; their meanings are unknown.",
+  "Decoding is static and in-process: no Business Rules! runtime, program execution or paired source is used.",
+];
+
+const SAVED_LIST_LIMITATIONS = [
   "Listing text is reconstructed from the program's saved LIST tokens. Compiled LIST stores canonical uppercase keywords and identifiers, PRINT for PR and explicit LET; original source spelling, Lexi preprocessing and comments removed before compilation are not recoverable.",
   "Some keyword spellings are inferred from compiled-only examples. Unresolved token codes remain visible as [[gg:cc]] placeholders and are listed in listing.unresolved_keywords.",
-  "References are derived from decoded listing statements (OPEN, CHAIN, LIBRARY, DEF). Computed operands are reported unevaluated; OPEN entries include screen/window opens as well as files.",
-  "Header version/option bytes and most line-table and symbol attribute bits are reported raw; their meanings are unknown. Execution-stream instructions are not decoded.",
-  "Decoding is static and in-process: no Business Rules! runtime, program execution or paired source is used.",
+];
+
+const EXECUTION_STREAM_LIMITATIONS = [
+  "The saved LIST was removed (stripped program); listing text is decompiled from the execution stream with the line and symbol tables. Comments, REM text and labels are not stored there: labels and line-number jump targets are both shown as line numbers, and comment-only lines appear as `!`.",
+  "Source spelling the execution stream does not keep is not recoverable: keyword abbreviations (PR/PRINT), implicit versus explicit LET, identifier case, quote style, redundant parentheses (minimal parentheses are emitted by precedence), numeric literal spelling (`.5`), `==`/`=>` aliases, `udim(mat X)` versus `udim(X)` and explicit default `*18` lengths. Indentation is synthesized at two spaces per block level.",
+  "Execution-stream output uses lowercase keywords and builtin functions and Title_Case identifiers per underscore-separated part; string literals are double-quoted with doubled embedded quotes. DIM and DATA lines are rendered from the source records the compiler embeds in the execution section.",
+  "Undecoded instructions stay visible as `<?...>` markers (or `! <undecodable: kind> hex` lines) and are listed per line in listing.unknown_markers.",
 ];
 
 const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
@@ -117,41 +130,43 @@ const projectHeader = (
   },
 });
 
-const decodeListing = (
-  data: Uint8Array,
-  header: BusinessRulesHeader,
-): {
+type ListingProjection = {
   readonly listing: BusinessRulesProgram["listing"];
   readonly records: readonly BusinessRulesTokenizedRecord[];
-} => {
-  const unavailable = (
-    status: "absent" | "unsupported" | "malformed",
-    reason: string,
-  ) => ({
-    listing: {
-      status,
-      basis: null,
-      reason,
-      lines: [],
-      unresolved_keywords: [],
-    },
-    records: [],
-  });
-  if (header.listingSize === 0)
-    return unavailable(
-      "absent",
-      "The saved LIST section has zero length (stripped program). Execution-stream decoding is not implemented, so program text is unknown; header, symbols and constants are still reported.",
-    );
+};
+
+const unavailableListing = (
+  status: "absent" | "unsupported" | "malformed",
+  reason: string,
+): ListingProjection => ({
+  listing: {
+    status,
+    basis: null,
+    reason,
+    lines: [],
+    unresolved_keywords: [],
+    unknown_markers: [],
+  },
+  records: [],
+});
+
+const decodeSavedListing = (
+  data: Uint8Array,
+  header: BusinessRulesHeader,
+): ListingProjection => {
   const sourceRecords = readBusinessRulesSourceRecords(data, header);
   if (!sourceRecords.ok)
-    return unavailable(sourceRecords.error.kind, sourceRecords.error.message);
+    return unavailableListing(
+      sourceRecords.error.kind,
+      sourceRecords.error.message,
+    );
   const lines: BusinessRulesProgram["listing"]["lines"] = [];
   const records: BusinessRulesTokenizedRecord[] = [];
   const unresolved = new Map<string, { group: 1 | 2; code: number }>();
   for (const record of sourceRecords.value) {
     const tokens = tokenizeBusinessRulesRecord(record.body, header.oldClauses);
     if (!tokens.ok)
-      return unavailable(
+      return unavailableListing(
         tokens.error.kind,
         `Line ${String(record.number)} at 0x${record.offset.toString(16)}: ${tokens.error.message}`,
       );
@@ -188,8 +203,53 @@ const decodeListing = (
           group: group === 1 ? "statement" : "clause",
           code,
         })),
+      unknown_markers: [],
     },
     records,
+  };
+};
+
+const decodeExecutionListing = (
+  data: Uint8Array,
+  header: BusinessRulesHeader,
+  symbols: Result<
+    readonly BusinessRulesSymbolRecord[],
+    BusinessRulesFormatFailure
+  >,
+): ListingProjection => {
+  if (!header.modern)
+    return unavailableListing(
+      "absent",
+      "The saved LIST section has zero length (stripped program). Execution-stream decoding supports only the modern layout, so program text is unknown; header and section layout are still reported.",
+    );
+  if (!symbols.ok)
+    return unavailableListing(
+      symbols.error.kind,
+      `The saved LIST section has zero length (stripped program) and execution-stream operands cannot be resolved without the symbol table: ${symbols.error.message}`,
+    );
+  const decoded = decodeBusinessRulesExecution(data, header, symbols.value);
+  if (!decoded.ok)
+    return unavailableListing(
+      decoded.error.kind,
+      `Execution stream not decoded: ${decoded.error.message}`,
+    );
+  return {
+    listing: {
+      status: "decoded",
+      basis: "execution-stream",
+      reason: null,
+      lines: decoded.value.map((line) => ({
+        number: line.number,
+        text: line.text,
+        record_offset: line.offset,
+        embedded: line.embedded,
+      })),
+      unresolved_keywords: [],
+      unknown_markers: decoded.value.flatMap((line) =>
+        line.unknowns.map((marker) => ({ line: line.number, marker })),
+      ),
+    },
+    records: executionReferenceRecords(decoded.value),
   };
 };
 
@@ -219,15 +279,26 @@ export const decodeBusinessRulesProgram = (
             },
           ]),
     );
-  const { listing, records } = decodeListing(data, header.value);
   const symbols = readBusinessRulesSymbols(data, header.value);
+  const stripped = header.value.listingSize === 0;
+  // A saved LIST is preferred when present; the execution stream is decoded only for stripped programs.
+  const { listing, records } = stripped
+    ? decodeExecutionListing(data, header.value, symbols)
+    : decodeSavedListing(data, header.value);
   const symbolStatus = symbols.ok ? "decoded" : symbols.error.kind;
-  const limitations = [...BASE_LIMITATIONS];
+  const limitations = [
+    ...(listing.basis === "execution-stream"
+      ? EXECUTION_STREAM_LIMITATIONS
+      : SAVED_LIST_LIMITATIONS),
+    ...BASE_LIMITATIONS,
+  ];
   if (!symbols.ok)
     limitations.push(`Symbol table not decoded: ${symbols.error.message}`);
-  if (listing.status === "absent")
+  if (listing.status !== "decoded")
     limitations.push(
-      "Program text and listing-derived references are unknown because the saved LIST was removed; embedded DIM records in the execution section are not reported as a listing.",
+      stripped
+        ? "Program text and listing-derived references are unknown because the saved LIST was removed and the execution stream could not be decoded."
+        : "Program text and listing-derived references are unknown because the saved LIST could not be decoded.",
     );
   const program = {
     artifact: { path, sha256, bytes: data.length },
@@ -311,7 +382,7 @@ const readFailure = (cause: unknown, path: string): AnalysisError => {
   );
 };
 
-/** Decode saved LIST, header and modern symbols from one stable program snapshot. */
+/** Decode header, modern symbols and the saved LIST (or, when stripped, the execution stream) from one stable program snapshot. */
 export class BusinessRulesProgramProvider implements BusinessRulesProgramPort {
   /** Read the selected file once, then decode in-process without executing it. */
   async inspect(

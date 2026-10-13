@@ -16,7 +16,11 @@ export const inspectBusinessRulesProgramInputSchema = z.strictObject({
     ),
 });
 
-/** One numbered program record reconstructed from its tokenized LIST bytes. */
+/**
+ * One numbered program line. For the saved-list basis, `record_offset` is the
+ * saved record; for the execution-stream basis it is the line's compiled code,
+ * or the embedded DIM/DATA source record when `embedded` is true.
+ */
 const businessRulesListingLineSchema = z.strictObject({
   number: z.number().int().min(0).max(99_999),
   text: z.string(),
@@ -92,6 +96,12 @@ export const businessRulesProgramSchema = z
           code: z.number().int().min(0).max(0xff),
         }),
       ),
+      unknown_markers: z.array(
+        z.strictObject({
+          line: z.number().int().min(0).max(99_999),
+          marker: z.string(),
+        }),
+      ),
     }),
     symbols: z.strictObject({
       status: sectionStatus,
@@ -146,7 +156,9 @@ export const businessRulesProgramSchema = z
       });
     if (
       listing.status !== "decoded" &&
-      (listing.lines.length > 0 || listing.reason === null)
+      (listing.lines.length > 0 ||
+        listing.reason === null ||
+        listing.unknown_markers.length > 0)
     )
       context.addIssue({
         code: "custom",

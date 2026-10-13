@@ -11,8 +11,9 @@ import { createTestBinarySession } from "../../fixtures/binarySession.js";
 import {
   body,
   modernProgram,
+  operands,
   run,
-  stripListing,
+  strippedProgram,
   symbol,
   u32,
 } from "../../fixtures/businessRules/program.js";
@@ -20,20 +21,37 @@ import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 
 it("advertises valid schemas and records decoded program evidence without a binary target", async () => {
   const directory = await createTestTempDirectory("rea-br-mcp-");
+  const menu = {
+    symbols: symbol("", 0x6040, Buffer.concat([u32(4), Buffer.from("MENU")])),
+    symbolSlots: 1,
+  };
   const program = modernProgram(
     [
       { number: 10, body: body(0x01, 0x31, run(5, '"MENU"')) },
       { number: 20, body: body(0x01, 0x2f) },
     ],
-    {
-      symbols: symbol("", 0x6040, Buffer.concat([u32(4), Buffer.from("MENU")])),
-      symbolSlots: 1,
-    },
+    menu,
+  );
+  // The same program with its saved LIST removed: CHAIN pushes the constant, END ends.
+  const compiled = strippedProgram(
+    [
+      {
+        number: 10,
+        code: Buffer.concat([
+          Buffer.from([1]),
+          operands(0x100),
+          Buffer.from([0x00, 0x71]),
+        ]),
+      },
+      { number: 20, code: Buffer.from([0x00, 0x6f]) },
+      { number: 30, code: Buffer.from([1]) },
+    ],
+    menu,
   );
   const listed = join(directory, "LISTED.WB");
   const stripped = join(directory, "STRIPPED.br");
   await writeFile(listed, program);
-  await writeFile(stripped, stripListing(program));
+  await writeFile(stripped, compiled);
   const session = createTestBinarySession(() => {
     throw new Error("deep provider must not start");
   });
@@ -93,11 +111,23 @@ it("advertises valid schemas and records decoded program evidence without a bina
     { line: 10, expression: '"MENU"', literal: "MENU" },
   ]);
 
-  const absent = await inspect(stripped);
-  expect(absent.result.listing.status).toBe("absent");
-  expect(absent.result.string_constants.values).toEqual([
-    { symbol_index: 0, value: "MENU" },
+  const decompiled = await inspect(stripped);
+  expect(decompiled.result.listing).toMatchObject({
+    status: "decoded",
+    basis: "execution-stream",
+    unknown_markers: [{ line: 30, marker: "<undecodable: ParseError>" }],
+  });
+  expect(decompiled.result.listing.lines.map((line) => line.text)).toEqual([
+    'chain "MENU"',
+    "end",
+    "! <Undecodable: Parseerror> 01",
   ]);
+  expect(decompiled.result.references.programs_chained).toEqual([
+    { line: 10, expression: '"MENU"', literal: "MENU" },
+  ]);
+  expect(decompiled.evidence.limitations.join("\n")).toMatch(
+    /execution stream/u,
+  );
 
   expect(
     (

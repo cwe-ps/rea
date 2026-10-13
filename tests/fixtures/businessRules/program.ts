@@ -175,3 +175,72 @@ export const float64 = (value: number): Buffer => {
   bytes.writeDoubleBE(value);
   return bytes;
 };
+
+/** One stripped-program line: its compiled code and an optional embedded DIM/DATA record body. */
+export interface ExecutionLine {
+  readonly number: number;
+  readonly code: Buffer;
+  readonly record?: Buffer;
+}
+
+/**
+ * Build a stripped modern container (saved-LIST size 0) from compiled line
+ * code. `slots` places each line (in program order) at a line-table position,
+ * so jump operands can be checked against positions rather than numbers.
+ */
+export const strippedProgram = (
+  lines: readonly ExecutionLine[],
+  options: {
+    readonly symbols?: Buffer;
+    readonly symbolSlots?: number;
+    readonly slots?: readonly number[];
+  } = {},
+): Buffer => {
+  const slots = options.slots ?? lines.map((_, index) => index);
+  const code: Buffer[] = [];
+  const table = Buffer.alloc(14 * lines.length);
+  let codeBytes = 0;
+  for (const [index, line] of lines.entries()) {
+    const embedded =
+      line.record === undefined
+        ? Buffer.alloc(0)
+        : record(line.number, line.record);
+    const chunk = Buffer.concat([
+      Buffer.from([line.code.length]),
+      line.code,
+      embedded,
+    ]);
+    const slot = 14 * (slots[index] ?? index);
+    table.writeUInt32BE(line.number, slot);
+    table.writeUInt32BE(codeBytes + 1, slot + 4);
+    table.writeUInt16BE(slots[index + 1] ?? 0xfffe, slot + 12);
+    code.push(chunk);
+    codeBytes += chunk.length;
+  }
+  const symbols = options.symbols ?? Buffer.alloc(0);
+  const header = Buffer.alloc(51);
+  const tableStart = 51 + codeBytes;
+  const symbolsStart = tableStart + table.length;
+  header.writeUInt32BE(51, 0);
+  header.writeUInt32BE(codeBytes, 4);
+  Buffer.from("0c2603a0", "hex").copy(header, 8);
+  header.writeUInt16BE(slots[0] ?? 0xfffe, 12);
+  header.writeUInt32BE(symbolsStart + symbols.length, 14);
+  header.writeUInt32BE(0, 18);
+  header.writeUInt32BE(tableStart, 22);
+  header.writeUInt32BE(table.length, 26);
+  header.writeUInt32BE(lines.length, 30);
+  header.writeUInt32BE(symbolsStart, 34);
+  header.writeUInt32BE(symbols.length, 38);
+  header.writeUInt32BE(options.symbolSlots ?? 0, 42);
+  Buffer.from("0118000001", "hex").copy(header, 46);
+  return Buffer.concat([header, ...code, table, symbols]);
+};
+
+/** Little-endian u16 operands: symbol slot `i` is `0x100 + i`, jump targets are table positions. */
+export const operands = (...values: readonly number[]): Buffer => {
+  const bytes = Buffer.alloc(2 * values.length);
+  for (const [index, value] of values.entries())
+    bytes.writeUInt16LE(value, 2 * index);
+  return bytes;
+};
