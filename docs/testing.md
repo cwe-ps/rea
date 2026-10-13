@@ -898,12 +898,26 @@ or chain dependency and does not execute a contract on a chain.
 `npm run verify:business-rules` skips with a message unless `REA_BR_CORPUS`
 selects an absolute directory of compiled `.br`/`.wb` programs. It then also
 requires an absolute `REA_BR_REFERENCE_DECODER` (the reference `decode` script,
-run with `python3` or `REA_BR_PYTHON`). Every program is inspected through the
-CLI; listings the reference decodes must match byte-for-byte, programs it
-reports as stripped must return `listing.status: "absent"`, and programs it
-rejects must not be reported as decoded. CLI and MCP results are compared on a
-decoded and a stripped sample. Output contains counts and file names only;
-never commit corpus programs or decoded listings.
+run with `python3 -I` or `REA_BR_PYTHON`, in its default case convention).
+`REA_BR_COMPARE` selects the comparison:
+
+- `listings` (default) inspects every program through the CLI. Saved-LIST
+  listings are reported as identical, equivalent ignoring case and whitespace
+  outside string literals, or different; REA keeps the stored uppercase
+  spelling, so only an REA-side decoding failure blocks. Stripped programs must
+  decode from the execution stream and match the reference: byte-for-byte when
+  REA's decoder walks the line table in slot order as the reference does
+  (`table-order`), and up to block indentation in REA's program order
+  (`program-order`), since the reference computes indentation in slot order
+  where lines were inserted out of sequence.
+- `from-exec` runs REA's execution-stream decoder on modern programs that keep
+  a saved LIST and compares it with the reference `--from-exec` output the same
+  way.
+- `all` runs both.
+
+CLI and MCP results are compared on a saved-LIST and an execution-stream
+sample. Output contains counts and file names only; never commit corpus
+programs or decoded listings.
 
 ### Recorded crash evidence
 
