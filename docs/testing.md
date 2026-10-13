@@ -893,6 +893,18 @@ unknowns, malformed carriers and independent cleanup. An optional positional
 entrypoint verifies a fresh installed package. It acquires no engine, compiler
 or chain dependency and does not execute a contract on a chain.
 
+### Business Rules! programs
+
+`npm run verify:business-rules` skips with a message unless `REA_BR_CORPUS`
+selects an absolute directory of compiled `.br`/`.wb` programs. It then also
+requires an absolute `REA_BR_REFERENCE_DECODER` (the reference `decode` script,
+run with `python3` or `REA_BR_PYTHON`). Every program is inspected through the
+CLI; listings the reference decodes must match byte-for-byte, programs it
+reports as stripped must return `listing.status: "absent"`, and programs it
+rejects must not be reported as decoded. CLI and MCP results are compared on a
+decoded and a stripped sample. Output contains counts and file names only;
+never commit corpus programs or decoded listings.
+
 ### Recorded crash evidence
 
 `npm run verify:recorded:crash` is a separate Linux x64 lane. It requires GCC,

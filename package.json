@@ -215,6 +215,7 @@
     "verify:web:network-captures": "npm run build:cached && node scripts/verify-web-network-captures.mjs",
     "verify:binary:layout": "npm run build:cached && node scripts/verify-binary-layout.mjs",
     "verify:evm:interface": "npm run build:cached && node scripts/verify-evm-interface.mjs",
+    "verify:business-rules": "npm run build:cached && node scripts/verify-business-rules-program.mjs",
     "verify:recorded:crash": "npm run build:cached && node scripts/verify-recorded-crash.mjs",
     "mcp-catalog:check:built": "node scripts/generate-mcp-tool-catalog.mjs --check",
     "compile": "node scripts/clean-build-output.mjs && tsc -p tsconfig.build.json",
