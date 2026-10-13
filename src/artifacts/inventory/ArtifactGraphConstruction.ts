@@ -17,6 +17,11 @@ import {
   zipPackageFormatForPath,
 } from "../../domain/zipPackageFormat.js";
 import { mzWindowsHeaderOffset, parseDosMzHeader } from "../../domain/dosMz.js";
+import {
+  classifyBusinessRulesPath,
+  confirmBusinessRulesFormat,
+  sniffWbVariant,
+} from "../../domain/businessrules/businessRulesFormat.js";
 
 /** Mutable internal occurrence used until root-bound IDs are known. */
 export interface MutableOccurrence {
@@ -313,6 +318,9 @@ export const classifyArtifactPath = (
   if (lower.endsWith(".plist")) return { kind: "plist", format: "plist" };
   if (lower.endsWith(".entitlements"))
     return { kind: "entitlements", format: "entitlements" };
+  const businessRulesFormat = classifyBusinessRulesPath(path);
+  if (businessRulesFormat !== undefined)
+    return { kind: "resource", format: businessRulesFormat };
   return { kind: "resource", format: "file" };
 };
 
@@ -325,6 +333,12 @@ export const classifyArtifactContent = (
   readonly kind: ArtifactOccurrence["artifact_kind"];
   readonly format: ArtifactOccurrence["artifact_format"];
 } => {
+  const businessRulesPath = classifyBusinessRulesPath(path);
+  if (businessRulesPath !== undefined)
+    return {
+      kind: "resource",
+      format: confirmBusinessRulesFormat(businessRulesPath, prefix),
+    };
   return artifactRoleForFormat(path, classifyArtifactBytes(prefix, fileSize));
 };
 
@@ -335,6 +349,7 @@ const artifactRoleForFormat = (
   const byPath = classifyArtifactPath(path);
   if (format === "file" || format === byPath.format) return byPath;
   if (format === "unknown") return { kind: "unknown", format };
+  if (format === "br-compiled") return { kind: "resource", format };
   if (format === "zip")
     return {
       kind: "container",
@@ -356,6 +371,7 @@ export const classifyArtifactBytes = (
 ): ArtifactNode["format"] => {
   if (hasZipSignature(prefix)) return "zip";
   if (prefix.subarray(0, 8).equals(Buffer.from("bplist00"))) return "plist";
+  if (sniffWbVariant(prefix) !== undefined) return "br-compiled";
   if (prefix.length >= 4) {
     const magic = prefix.readUInt32BE(0);
     if ([0xcafebabe, 0xbebafeca, 0xcafebabf, 0xbfbafeca].includes(magic))

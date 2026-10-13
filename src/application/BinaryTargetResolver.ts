@@ -25,6 +25,11 @@ import {
   hasZipSignature,
   zipPackageFormatForPath,
 } from "../domain/zipPackageFormat.js";
+import {
+  classifyBusinessRulesPath,
+  confirmBusinessRulesFormat,
+  sniffBusinessRulesContent,
+} from "../domain/businessrules/businessRulesFormat.js";
 
 import {
   parseExecutableHeader,
@@ -157,17 +162,26 @@ const detectArtifactFormat = async (
   | undefined
 > => {
   const lower = path.toLowerCase();
-  const magic = Buffer.alloc(8);
+  const magic = Buffer.alloc(64);
   const observed = await handle.read(magic, 0, magic.length, 0);
-  if (hasZipSignature(magic.subarray(0, observed.bytesRead))) {
+  const prefix = magic.subarray(0, observed.bytesRead);
+  if (hasZipSignature(prefix)) {
     return zipPackageFormatForPath(lower) ?? "zip";
   }
   const named = namedArtifactFormat(lower);
   if (named !== undefined) return named;
+  const businessRulesPath = classifyBusinessRulesPath(path);
+  if (businessRulesPath !== undefined) {
+    const confirmed = confirmBusinessRulesFormat(businessRulesPath, prefix);
+    if (confirmed !== "file") return confirmed;
+  } else {
+    const sniffed = sniffBusinessRulesContent(prefix);
+    if (sniffed !== undefined) return sniffed;
+  }
   if (
     lower.endsWith(".pkg") &&
-    observed.bytesRead >= 4 &&
-    magic.subarray(0, 4).toString("ascii") === "xar!"
+    prefix.length >= 4 &&
+    prefix.subarray(0, 4).toString("ascii") === "xar!"
   )
     return "pkg";
   if (lower.endsWith(".dmg")) {

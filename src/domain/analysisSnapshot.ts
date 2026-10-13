@@ -48,6 +48,12 @@ const formatSchema = z.enum([
   "plist",
   "javascript",
   "source-map",
+  "br-compiled",
+  "br-source",
+  "br-status",
+  "br-procedure",
+  "br-screen",
+  "br-config",
 ]);
 const kindSchema = z.enum(["executable", "database", "archive", "artifact"]);
 const subjectSchema = z.object({
@@ -62,6 +68,12 @@ const subjectSchema = z.object({
     "mach-o-universal",
     "javascript-bundle",
     "entitlements",
+    "br-compiled",
+    "br-source",
+    "br-status",
+    "br-procedure",
+    "br-screen",
+    "br-config",
   ]),
   architecture: architectureSchema.nullable(),
 });

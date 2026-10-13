@@ -3,6 +3,7 @@ import { createDirectAnalysis } from "./composition/directAnalysis.js";
 import { registerEvmCommands } from "./cli/evmCommands.js";
 import { registerAnalysisViewCommands } from "./cli/analysisViewCommands.js";
 import { registerBinaryDiagnosticsCommands } from "./cli/binaryDiagnosticsCommands.js";
+import { registerBusinessRulesCommands } from "./cli/businessRulesCommands.js";
 import { Cli } from "incur";
 
 import { createLogger, parseLogLevel } from "./logger.js";
@@ -77,6 +78,7 @@ export const createCli = (
   registerAndroidCommands(cli, logger, environment);
   registerFirmwareCommands(cli, logger, environment);
   registerBinaryDiagnosticsCommands(cli, logger, environment);
+  registerBusinessRulesCommands(cli, logger);
   registerAnalysisViewCommands(cli, logger);
   registerEvidenceCommands(cli, logger);
   registerProcessCommands(cli, logger, environment);

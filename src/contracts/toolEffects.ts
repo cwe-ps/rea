@@ -225,6 +225,7 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   inspect_keyed_archive: evidence,
   trace_dylib_resolution: evidence,
   inspect_managed_artifact: evidence,
+  inspect_business_rules_artifact: evidence,
   inspect_managed_members: evidence,
   inspect_managed_native_boundaries: evidence,
   compare_managed_members: sessionEvidence,

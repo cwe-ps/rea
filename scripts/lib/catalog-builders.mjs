@@ -26,6 +26,7 @@ export const toolFamilyCatalog = (sources) => {
       surface: "artifact-provider",
       contracts: [
         ...sources.artifactContracts.ARTIFACT_TOOL_CONTRACTS,
+        ...sources.businessRulesContracts.BUSINESS_RULES_TOOL_CONTRACTS,
         ...sources.evmContracts.EVM_TOOL_CONTRACTS,
       ],
     },

@@ -8,6 +8,7 @@ import { canonicalDigest } from "./comparisonSemantics.js";
 import { uniqueSorted } from "./canonicalOrdering.js";
 import { evidenceSchema, parseEvidence, type Evidence } from "./evidence.js";
 import { jsonValueSchema } from "./jsonValue.js";
+import { isBusinessRulesFormat } from "./businessrules/businessRulesFormat.js";
 import { prefixedDigestSchema } from "./../domain/digests.js";
 
 const textSchema = z.string().min(1);
@@ -295,7 +296,11 @@ const allHypotheses = (
         ? [
             "The artifact may contain a recoverable JavaScript application graph.",
           ]
-        : [];
+        : inventory.manifest.root_format === "br-compiled"
+          ? [
+              "The tokenized Business Rules! program may expose line-number records and embedded plaintext strings without token decoding.",
+            ]
+          : [];
   return statements.map((statement) => {
     const semantic = {
       statement,
@@ -371,6 +376,15 @@ const probesFor = (
       {
         operation: "inspect_plist",
         rationale: "Parse property-list values without executing the artifact.",
+        authority: "artifact-bytes",
+      },
+    ];
+  if (isBusinessRulesFormat(format))
+    return [
+      {
+        operation: "inspect_business_rules_artifact",
+        rationale:
+          "Parse Business Rules! artifact structure (compiled-program header, line records, and strings; status fields; or source references) without executing it.",
         authority: "artifact-bytes",
       },
     ];

@@ -9,6 +9,9 @@ import { registerAnalysisViewTool } from "./registerAnalysisViewTool.js";
 import { registerBinaryDiagnosticsTools } from "./registerBinaryDiagnosticsTools.js";
 import { createBinaryLayoutService } from "../composition/binaryDiagnostics.js";
 import type { BinaryLayoutService } from "../application/binaryDiagnostics/BinaryLayoutService.js";
+import { registerBusinessRulesTools } from "./registerBusinessRulesTools.js";
+import { createBusinessRulesArtifactService } from "../composition/businessRules.js";
+import type { BusinessRulesArtifactService } from "../application/businessRules/BusinessRulesArtifactService.js";
 import { EvidenceMcpServer } from "./EvidenceMcpServer.js";
 import {
   createToolResultDelivery,
@@ -81,6 +84,7 @@ export interface CreateServerOptions {
   readonly evmInterface?: EvmInterfaceService;
   readonly logger?: Logger;
   readonly binaryLayout?: BinaryLayoutService;
+  readonly businessRules?: BusinessRulesArtifactService;
   readonly recordedCrash?: RecordedCrashService;
   readonly firmwareAnalysis?: FirmwareAnalysisPort;
   readonly javascriptRecovery?: JavaScriptRecoveryPort;
@@ -270,6 +274,12 @@ const registerConfiguredAnalysisTools = (
   registerBinaryDiagnosticsTools(
     server,
     options.binaryLayout ?? createBinaryLayoutService(environment),
+    toolLogger,
+    recordEvidence,
+  );
+  registerBusinessRulesTools(
+    server,
+    options.businessRules ?? createBusinessRulesArtifactService(),
     toolLogger,
     recordEvidence,
   );

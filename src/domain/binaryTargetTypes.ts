@@ -63,5 +63,14 @@ export type BinaryTarget =
   | (BinaryTargetIdentity &
       NonExecutableMetadata & {
         readonly kind: "artifact";
-        readonly format: "plist" | "javascript" | "source-map";
+        readonly format:
+          | "plist"
+          | "javascript"
+          | "source-map"
+          | "br-compiled"
+          | "br-source"
+          | "br-status"
+          | "br-procedure"
+          | "br-screen"
+          | "br-config";
       });

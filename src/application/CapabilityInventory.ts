@@ -222,6 +222,9 @@ const availabilityFor = (context: AvailabilityContext): Availability => {
     return navigationContextAvailability(context.descriptors);
   const javascriptApplication = javascriptApplicationAvailability(context);
   if (javascriptApplication !== null) return javascriptApplication;
+  // The built-in BR parser inspects explicit local artifacts without a provider or active target.
+  if (context.name === "inspect_business_rules_artifact")
+    return { reason: "available", remediation: null };
   const failure = optionalProviderFailureFor(context);
   if (failure !== undefined)
     return {

@@ -61,6 +61,12 @@ const artifactFormatSchema = z.enum([
   "directory",
   "file",
   "unknown",
+  "br-compiled",
+  "br-source",
+  "br-status",
+  "br-procedure",
+  "br-screen",
+  "br-config",
 ]);
 
 /** Formats established from bytes or a virtual directory tree, independent of path roles. */
@@ -75,6 +81,7 @@ const artifactContentFormatSchema = artifactFormatSchema.extract([
   "directory",
   "file",
   "unknown",
+  "br-compiled",
 ]);
 
 /** File byte interval for an artifact derived without writing it to disk. */
