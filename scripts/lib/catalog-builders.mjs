@@ -27,6 +27,7 @@ export const toolFamilyCatalog = (sources) => {
       contracts: [
         ...sources.artifactContracts.ARTIFACT_TOOL_CONTRACTS,
         ...sources.evmContracts.EVM_TOOL_CONTRACTS,
+        ...sources.businessRulesContracts.BUSINESS_RULES_TOOL_CONTRACTS,
       ],
     },
     {
@@ -158,6 +159,10 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.evmProvider.EVMOLE_PROVIDER_IDENTITY,
       contracts: sources.evmContracts.EVM_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.businessRulesProvider.BUSINESS_RULES_PROVIDER_IDENTITY,
+      contracts: sources.businessRulesContracts.BUSINESS_RULES_TOOL_CONTRACTS,
     },
     {
       identity: sources.artifactProviders.ARTIFACT_GRAPH_PROVIDER,

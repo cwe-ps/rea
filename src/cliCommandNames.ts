@@ -1,6 +1,7 @@
 /** Canonical names used by every one-shot CLI command registration. */
 export const CLI_COMMANDS = Object.freeze({
   inspectEvmInterface: "inspect-evm-interface",
+  inspectBusinessRulesProgram: "inspect-business-rules-program",
   inspectWebNetworkCapture: "inspect-web-network-capture",
   observeWebExecution: "observe-web-execution",
   inspectWebEventListeners: "inspect-web-event-listeners",

@@ -47,6 +47,9 @@ const SOURCE_PATHS = {
   nativeContracts: "dist/contracts/native/nativeToolContracts.js",
   evmContracts: "dist/contracts/evm/evmToolContracts.js",
   evmProvider: "dist/evm/EvmoleRelease.js",
+  businessRulesContracts:
+    "dist/contracts/businessRules/businessRulesToolContracts.js",
+  businessRulesProvider: "dist/businessRules/BusinessRulesRelease.js",
   artifactContracts: "dist/contracts/artifactToolContracts.js",
   managedContracts: "dist/contracts/managed/managedToolContracts.js",
   firmwareContracts: "dist/contracts/firmware/firmwareToolContracts.js",
