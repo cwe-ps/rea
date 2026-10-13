@@ -104,6 +104,12 @@ explicit path or endpoint and do not need it.
   argument strings and mutability as inferred candidates; this performs no chain
   lookup or target execution. See the
   [EVM bytecode guide](https://github.com/morluto/rea/blob/main/docs/evm-bytecode.md).
+- Compiled Business Rules! program (`.br`/`.wb`): `inspect_business_rules_program`.
+  It returns the header, the numbered listing reconstructed from the saved LIST,
+  modern symbols and string constants, and OPEN/CHAIN/LIBRARY/DEF references
+  derived from that listing. Stripped programs report `listing.status: "absent"`
+  with header and symbols intact; do not treat absent text as an empty program. See the
+  [Business Rules! guide](https://github.com/morluto/rea/blob/main/docs/business-rules-program.md).
 - Explicit Linux ELF file for offline layout, symbols, relocations or static
   mitigation evidence: `inspect_binary_layout`. This target-free operation uses
   caller-supplied pwntools without opening a disassembler database. Preserve its

@@ -131,20 +131,21 @@ npx rea-agents@latest setup
 
 REA에는 Node.js 22.x(>=22.19), 24.x(>=24.11) 또는 26+와 npm이 필요합니다. 추가 도구와 호스트 지원은 대상에 따라 다릅니다.
 
-| 대상                  | REA가 반환하는 내용                                                           | 요구 사항 및 가이드                                                                                                                   |
-| --------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| 네이티브 바이너리     | 의사 코드, 어셈블리, 문자열, 심볼, 호출, 참조                                 | Hopper, Ghidra 또는 IDA; [네이티브 분석](https://rea.tools/guides/native/)                                                            |
-| 오프라인 ELF 레이아웃 | 섹션, 세그먼트, 원본 심볼/재배치 정보, 정적 분석으로 얻은 보안 완화 기법 후보 | Linux x64에서 호출자가 제공하는 pwntools; [바이너리 진단](docs/binary-diagnostics.md)                                                 |
-| EVM 바이트코드        | 디스패치 선택자, 바이트 오프셋, 추론한 인자와 상태 변경 가능 여부             | 로컬 원시 바이트/16진수 입력 파일; [오프라인 EVM 가이드](docs/evm-bytecode.md)                                                        |
-| 기록된 Linux 크래시   | 원시 note 레코드, 기록된 모든 스레드의 레지스터/시그널, 선택적 매핑 후보      | 호출자가 제공하는 pwntools; GDB/pwndbg는 선택 사항; [기록된 크래시](docs/recorded-crashes.md)                                         |
-| JavaScript / Electron | 모듈, 임포트, 소스 맵, 라우트, IPC, 네이티브 애드온 관계                      | Node.js와 npm; [애플리케이션 분석](https://rea.tools/guides/javascript/)                                                              |
-| 웹사이트              | 페이지 구조, 스크립트, 네트워크 관찰 결과, 요청한 스크린샷                    | Chrome 계열 브라우저; [브라우저 분석](https://rea.tools/guides/browser/)                                                              |
-| 저장된 네트워크 캡처  | 요청, 응답, 접근 가능한 페이로드, 소스 위치                                   | HAR; mitmproxy 네이티브 캡처에는 Linux의 mitmdump; [캡처 가이드](docs/web-network-captures.md)                                        |
-| .NET 어셈블리         | 메타데이터, CIL 명령, 선언된 네이티브 의존성, 빌드 비교                       | 정적 검사; [관리 코드 가이드](docs/managed-code-analysis.md)                                                                          |
-| Android APK           | 매니페스트 선언, 클래스, 디컴파일된 메서드, 참조                              | Linux/macOS의 헤드리스 JADX와 전체 JDK; [Android 가이드](docs/android-analysis.md)                                                    |
-| 펌웨어                | 영역, 추출 결과, 네이티브 분석으로 전달할 정보                                | Linux의 Binwalk / Unblob; [펌웨어 가이드](docs/firmware-analysis.md)                                                                  |
-| 패키지 및 리소스      | 파일 목록, 다이제스트, plist, Apple 번들 구조, 추출한 리소스                  | [아티팩트 및 JavaScript 가이드](docs/javascript-artifact-reconstruction.md), [Apple 애플리케이션](docs/apple-application-analysis.md) |
-| 프로세스 동작         | 터미널 출력, 상호작용, 종료 및 파일 시스템 관찰 결과, 실행 비교               | 네이티브 PTY를 지원하는 Linux/macOS; [프로세스 캡처](docs/process-capture.md)                                                         |
+| 대상                     | REA가 반환하는 내용                                                           | 요구 사항 및 가이드                                                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 네이티브 바이너리        | 의사 코드, 어셈블리, 문자열, 심볼, 호출, 참조                                 | Hopper, Ghidra 또는 IDA; [네이티브 분석](https://rea.tools/guides/native/)                                                            |
+| 오프라인 ELF 레이아웃    | 섹션, 세그먼트, 원본 심볼/재배치 정보, 정적 분석으로 얻은 보안 완화 기법 후보 | Linux x64에서 호출자가 제공하는 pwntools; [바이너리 진단](docs/binary-diagnostics.md)                                                 |
+| EVM 바이트코드           | 디스패치 선택자, 바이트 오프셋, 추론한 인자와 상태 변경 가능 여부             | 로컬 원시 바이트/16진수 입력 파일; [오프라인 EVM 가이드](docs/evm-bytecode.md)                                                        |
+| Business Rules! 프로그램 | 헤더, 번호가 매겨진 목록, 심볼, 문자열 상수, 파일/프로그램 참조               | 컴파일된 .br/.wb 파일; [Business Rules! 가이드](docs/business-rules-program.md)                                                       |
+| 기록된 Linux 크래시      | 원시 note 레코드, 기록된 모든 스레드의 레지스터/시그널, 선택적 매핑 후보      | 호출자가 제공하는 pwntools; GDB/pwndbg는 선택 사항; [기록된 크래시](docs/recorded-crashes.md)                                         |
+| JavaScript / Electron    | 모듈, 임포트, 소스 맵, 라우트, IPC, 네이티브 애드온 관계                      | Node.js와 npm; [애플리케이션 분석](https://rea.tools/guides/javascript/)                                                              |
+| 웹사이트                 | 페이지 구조, 스크립트, 네트워크 관찰 결과, 요청한 스크린샷                    | Chrome 계열 브라우저; [브라우저 분석](https://rea.tools/guides/browser/)                                                              |
+| 저장된 네트워크 캡처     | 요청, 응답, 접근 가능한 페이로드, 소스 위치                                   | HAR; mitmproxy 네이티브 캡처에는 Linux의 mitmdump; [캡처 가이드](docs/web-network-captures.md)                                        |
+| .NET 어셈블리            | 메타데이터, CIL 명령, 선언된 네이티브 의존성, 빌드 비교                       | 정적 검사; [관리 코드 가이드](docs/managed-code-analysis.md)                                                                          |
+| Android APK              | 매니페스트 선언, 클래스, 디컴파일된 메서드, 참조                              | Linux/macOS의 헤드리스 JADX와 전체 JDK; [Android 가이드](docs/android-analysis.md)                                                    |
+| 펌웨어                   | 영역, 추출 결과, 네이티브 분석으로 전달할 정보                                | Linux의 Binwalk / Unblob; [펌웨어 가이드](docs/firmware-analysis.md)                                                                  |
+| 패키지 및 리소스         | 파일 목록, 다이제스트, plist, Apple 번들 구조, 추출한 리소스                  | [아티팩트 및 JavaScript 가이드](docs/javascript-artifact-reconstruction.md), [Apple 애플리케이션](docs/apple-application-analysis.md) |
+| 프로세스 동작            | 터미널 출력, 상호작용, 종료 및 파일 시스템 관찰 결과, 실행 비교               | 네이티브 PTY를 지원하는 Linux/macOS; [프로세스 캡처](docs/process-capture.md)                                                         |
 
 정적 JavaScript 및 .NET 검사는 제공된 파일을 읽으며 애플리케이션을 실행하지 않습니다. 런타임 캡처는 사용자의 권한으로 선택한 대상을 실행하거나 대상과 상호작용합니다. 각 런타임 가이드에서 그 영향을 설명합니다.
 
