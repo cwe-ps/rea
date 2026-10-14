@@ -25,12 +25,15 @@ import { ProviderAdapterError } from "../domain/providerAdapterError.js";
 import { err, ok, type Result } from "../domain/result.js";
 import {
   readBusinessRulesHeader,
+  readBusinessRulesLineTable,
+  readBusinessRulesSourceRecord,
   readBusinessRulesSourceRecords,
   readBusinessRulesSymbols,
   renderBusinessRulesTokens,
   tokenizeBusinessRulesRecord,
   type BusinessRulesFormatFailure,
   type BusinessRulesHeader,
+  type BusinessRulesLineSlot,
   type BusinessRulesSymbolRecord,
 } from "./BusinessRulesDecoder.js";
 import { decodeBusinessRulesExecution } from "./BusinessRulesExecutionListing.js";
@@ -51,7 +54,7 @@ import {
 const OPERATION = "inspect_business_rules_program";
 
 const BASE_LIMITATIONS = [
-  "References are derived from decoded listing statements (OPEN, CHAIN, LIBRARY, DEF). Computed operands are reported unevaluated; OPEN entries include screen/window opens as well as files.",
+  "References are derived from decoded listing statements (OPEN, CHAIN, EXECUTE, LIBRARY, DEF). Computed operands are reported unevaluated; OPEN entries include screen/window opens as well as files.",
   "Header version/option bytes and most line-table and symbol attribute bits are reported raw; their meanings are unknown.",
   "Decoding is static and in-process: no Business Rules! runtime, program execution or paired source is used.",
 ];
@@ -67,6 +70,111 @@ const EXECUTION_STREAM_LIMITATIONS = [
   "Execution-stream output uses lowercase keywords and builtin functions and Title_Case identifiers per underscore-separated part; string literals are double-quoted with doubled embedded quotes. DIM and DATA lines are rendered from the source records the compiler embeds in the execution section.",
   "Undecoded instructions stay visible as `<?...>` markers (or `! <undecodable: kind> hex` lines) and are listed per line in listing.unknown_markers.",
 ];
+
+const STRIPPED_LEGACY_LIMITATIONS = [
+  "Legacy stripped program: stripped_legacy reports the line-table chain (line numbers in program order, compiled-code offsets and raw slot flag bytes) and the DIM/DATA source records the compiler embeds in the execution section. Statements other than embedded DIM/DATA have text null; their execution code is not decoded.",
+  "stripped_legacy.symbol_section_strings are raw printable runs of at least four bytes inside the legacy symbol section. They include symbol names and string literals but also adjacent attribute bytes that happen to be printable; slot boundaries, names shorter than four bytes and literal values are not separated.",
+];
+
+const MIN_PRINTABLE_RUN = 4;
+
+/** Printable ASCII runs inside one section; raw observations, not decoded entries. */
+const printableRuns = (
+  data: Uint8Array,
+  start: number,
+  end: number,
+): { offset: number; text: string }[] => {
+  const runs: { offset: number; text: string }[] = [];
+  let run = -1;
+  for (let offset = start; offset <= end; offset += 1) {
+    const byte = offset < end ? data[offset] : undefined;
+    const printable = byte !== undefined && byte >= 0x20 && byte <= 0x7e;
+    if (printable && run < 0) run = offset;
+    else if (!printable && run >= 0) {
+      if (offset - run >= MIN_PRINTABLE_RUN)
+        runs.push({
+          offset: run,
+          text: Buffer.from(data.subarray(run, offset)).toString("latin1"),
+        });
+      run = -1;
+    }
+  }
+  return runs;
+};
+
+/** Render one embedded DIM/DATA source record a line-table slot points to. */
+const embeddedSourceText = (
+  data: Uint8Array,
+  header: BusinessRulesHeader,
+  line: BusinessRulesLineSlot,
+): Result<{ offset: number; text: string }, BusinessRulesFormatFailure> => {
+  const record = readBusinessRulesSourceRecord(data, header, line);
+  if (!record.ok) return record;
+  const tokens = tokenizeBusinessRulesRecord(
+    record.value.body,
+    header.oldClauses,
+  );
+  if (!tokens.ok) return tokens;
+  return ok({
+    offset: record.value.offset,
+    text: renderBusinessRulesTokens(tokens.value),
+  });
+};
+
+/** Line-table and symbol-section observations for a stripped legacy program. */
+const strippedLegacyFacts = (
+  data: Uint8Array,
+  header: BusinessRulesHeader,
+): NonNullable<BusinessRulesProgram["stripped_legacy"]> => {
+  const symbol_section_strings = printableRuns(
+    data,
+    header.symbolsStart,
+    header.symbolsStart + header.symbolsSize,
+  );
+  const malformed = (
+    reason: string,
+  ): NonNullable<BusinessRulesProgram["stripped_legacy"]> => ({
+    evidence_kind: "observed",
+    line_table: { status: "malformed", reason, lines: [] },
+    symbol_section_strings,
+  });
+  const table = readBusinessRulesLineTable(data, header);
+  if (!table.ok) return malformed(table.error.message);
+  const lines: NonNullable<
+    BusinessRulesProgram["stripped_legacy"]
+  >["line_table"]["lines"] = [];
+  for (const line of table.value) {
+    if (line.number > 99_999 || line.code >= header.codeSize)
+      return malformed(
+        `Line-table slot ${String(line.slot)} carries line ${String(line.number)} with code offset 0x${line.code.toString(16)} outside the execution section.`,
+      );
+    let recordOffset: number | null = null;
+    let text: string | null = null;
+    if (line.embedded) {
+      const embedded = embeddedSourceText(data, header, line);
+      if (!embedded.ok)
+        return malformed(
+          `Line ${String(line.number)}: ${embedded.error.message}`,
+        );
+      recordOffset = embedded.value.offset;
+      text = embedded.value.text;
+    }
+    lines.push({
+      number: line.number,
+      slot: line.slot,
+      flags: line.flags,
+      code_offset: header.codeStart + line.code,
+      embedded: line.embedded,
+      record_offset: recordOffset,
+      text,
+    });
+  }
+  return {
+    evidence_kind: "observed",
+    line_table: { status: "decoded", reason: null, lines },
+    symbol_section_strings,
+  };
+};
 
 const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 
@@ -220,7 +328,7 @@ const decodeExecutionListing = (
   if (!header.modern)
     return unavailableListing(
       "absent",
-      "The saved LIST section has zero length (stripped program). Execution-stream decoding supports only the modern layout, so program text is unknown; header and section layout are still reported.",
+      "The saved LIST section has zero length (stripped program). Execution-stream decoding supports only the modern layout, so program text is unknown; header, section layout and the observed line table (stripped_legacy) are still reported.",
     );
   if (!symbols.ok)
     return unavailableListing(
@@ -286,12 +394,23 @@ export const decodeBusinessRulesProgram = (
     ? decodeExecutionListing(data, header.value, symbols)
     : decodeSavedListing(data, header.value);
   const symbolStatus = symbols.ok ? "decoded" : symbols.error.kind;
+  const strippedLegacy =
+    stripped && !header.value.modern
+      ? strippedLegacyFacts(data, header.value)
+      : null;
   const limitations = [
     ...(listing.basis === "execution-stream"
       ? EXECUTION_STREAM_LIMITATIONS
       : SAVED_LIST_LIMITATIONS),
     ...BASE_LIMITATIONS,
   ];
+  if (strippedLegacy !== null) {
+    limitations.push(...STRIPPED_LEGACY_LIMITATIONS);
+    if (strippedLegacy.line_table.status === "malformed")
+      limitations.push(
+        `Legacy line table not decoded: ${strippedLegacy.line_table.reason ?? "malformed"}`,
+      );
+  }
   if (!symbols.ok)
     limitations.push(`Symbol table not decoded: ${symbols.error.message}`);
   if (listing.status !== "decoded")
@@ -319,6 +438,7 @@ export const decodeBusinessRulesProgram = (
           )
         : [],
     },
+    stripped_legacy: strippedLegacy,
     references: {
       evidence_kind: "derived" as const,
       status: listing.status === "decoded" ? "derived" : "unknown",

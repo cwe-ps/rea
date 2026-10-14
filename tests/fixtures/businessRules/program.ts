@@ -244,3 +244,56 @@ export const operands = (...values: readonly number[]): Buffer => {
     bytes.writeUInt16LE(value, 2 * index);
   return bytes;
 };
+
+/** One line of a stripped legacy container; embedded lines carry a DIM/DATA source record. */
+export interface LegacyStrippedLine {
+  readonly number: number;
+  readonly embedded?: Buffer;
+}
+
+/**
+ * Build a stripped legacy little-endian container (no saved LIST): execution
+ * stubs, optional embedded source records, a chained line table and an opaque
+ * symbol section.
+ */
+export const legacyStrippedProgram = (
+  lines: readonly LegacyStrippedLine[],
+  symbolSection: Buffer,
+): Buffer => {
+  const code: Buffer[] = [];
+  const table: Buffer[] = [];
+  let codeBytes = 0;
+  for (const [index, line] of lines.entries()) {
+    const codeOffset = codeBytes;
+    const stub = Buffer.from([0x01, 0x40]);
+    code.push(stub);
+    codeBytes += stub.length;
+    let source = 0;
+    if (line.embedded !== undefined) {
+      const saved = record(line.number, line.embedded, true);
+      source = codeBytes + 2;
+      code.push(saved);
+      codeBytes += saved.length;
+    }
+    const slot = Buffer.alloc(14);
+    slot.writeUInt32LE(
+      (line.number |
+        (line.embedded === undefined ? 0x08000000 : 0x8a000000)) >>>
+        0,
+    );
+    slot.writeUInt32LE(source, 4);
+    slot.writeUInt32LE(codeOffset, 8);
+    slot.writeUInt16LE(index < lines.length - 1 ? index + 1 : 0xfffe, 12);
+    table.push(slot);
+  }
+  const header = Buffer.alloc(30);
+  header.writeUInt32LE(codeBytes, 0);
+  header.writeUInt32LE(0, 4);
+  Buffer.from([0x0a, 0x25, 0x02, 0xa0, 0x01, 0x18]).copy(header, 8);
+  header.writeUInt32LE(symbolSection.length, 16);
+  header.writeUInt32LE(30, 20);
+  header.writeUInt16LE(2, 24);
+  header.writeUInt16LE(lines.length, 26);
+  header.writeUInt16LE(0, 28);
+  return Buffer.concat([header, ...code, ...table, symbolSection]);
+};

@@ -45,10 +45,13 @@ rea inspect-business-rules-program ./PAYROLL.WB --json
   `numeric_value: null`. Legacy symbol payloads are reported as `unsupported`.
 - `string_constants`: raw string literals from the symbol pool, keyed by
   symbol index. Its status follows the symbol table.
-- `references`: OPEN, CHAIN, LIBRARY and DEF operands **derived** from the
+- `references`: OPEN (`files_opened`), CHAIN (`programs_chained`), EXECUTE
+  (`commands_executed`), LIBRARY and DEF operands **derived** from the
   decoded listing statements. Operands are reported as written; computed
   expressions are not evaluated, and OPEN entries include window/screen opens.
   When the listing is not decoded, `references.status` is `unknown`.
+- `stripped_legacy`: `null` unless the program uses the legacy layout and its
+  saved LIST was removed; see [Stripped legacy programs](#stripped-legacy-programs).
 
 ## Stripped programs
 
@@ -85,7 +88,28 @@ be parsed is kept as `! <undecodable: kind> hex`; both are listed in
 
 Programs with the legacy little-endian layout and no saved LIST keep
 `listing.status: "absent"` with header and section layout; REA has no
-execution-stream or symbol decoder for that layout. If the symbol table or line
+execution-stream or symbol decoder for that layout. Their observed facts are
+reported in `stripped_legacy` instead.
+
+### Stripped legacy programs
+
+`stripped_legacy` (`evidence_kind: "observed"`) carries what the legacy
+container still states without decoding its execution stream:
+
+- `line_table`: the active line-table chain in program order. Each line has its
+  program `number`, table `slot`, raw high flag byte `flags` (only `0x02`,
+  embedded source, is understood), the absolute `code_offset` of its compiled
+  code, and whether it is `embedded`. DIM and DATA lines keep their source
+  record inside the execution section; for those, `record_offset` and the
+  rendered `text` are reported. Other lines have `text: null`. A damaged
+  chain gives `status: "malformed"` with the `reason` and no lines.
+- `symbol_section_strings`: printable ASCII runs of at least four bytes inside
+  the legacy symbol section, with absolute offsets. They show symbol names and
+  string literals but are raw byte observations: slot boundaries are not
+  decoded, adjacent printable attribute bytes can extend a run, and names
+  shorter than four bytes are missed.
+
+The legacy statement code, symbol slot layout and references remain unknown. If the symbol table or line
 table of a stripped program is damaged, the listing is `malformed` with the
 reason, and references are unknown.
 
@@ -107,6 +131,11 @@ recoverable. Some keyword spellings are inferred from compiled-only examples.
 Execution-stream limits are listed under [Stripped programs](#stripped-programs).
 
 ## Verification
+
+The stripped-legacy line table was checked against a local corpus of 178
+legacy stripped programs: every chain was complete and strictly ascending
+(30,047 lines), and all 896 embedded DIM/DATA records matched their slot's
+line number and tokenized.
 
 `npm run verify:business-rules` compares every `.br`/`.wb` program under
 `REA_BR_CORPUS` with a reference decoder selected by

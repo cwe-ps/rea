@@ -17,8 +17,8 @@ export interface BusinessRulesTokenizedRecord {
   readonly tokens: readonly BusinessRulesToken[];
 }
 
-/** Remove `!` comments outside string literals while keeping physical lines. */
-const withoutComments = (text: string): string => {
+/** Remove `!` comments outside string literals, joining physical lines with a space. */
+export const withoutBusinessRulesComments = (text: string): string => {
   let output = "";
   let quote: string | null = null;
   let comment = false;
@@ -87,7 +87,7 @@ const statementSegments = (
     const text = renderBusinessRulesTokens(tokens.slice(start, end));
     segments.push({
       code: first.code,
-      text: withoutComments(text.slice(word.length)).trim(),
+      text: withoutBusinessRulesComments(text.slice(word.length)).trim(),
     });
   };
   for (const [index, token] of tokens.entries())
@@ -99,65 +99,139 @@ const statementSegments = (
   return segments;
 };
 
-/** Project OPEN/CHAIN/LIBRARY/DEF operands from decoded statement tokens. */
+type Located<T> = T extends readonly (infer Item)[]
+  ? Omit<Item, "line">
+  : never;
+
+/** One statement's reference operands, before a source location is attached. */
+export type BusinessRulesStatementReference =
+  | {
+      readonly kind: "files_opened";
+      readonly value: Located<References["files_opened"]>;
+    }
+  | {
+      readonly kind: "programs_chained";
+      readonly value: Located<References["programs_chained"]>;
+    }
+  | {
+      readonly kind: "commands_executed";
+      readonly value: Located<References["commands_executed"]>;
+    }
+  | {
+      readonly kind: "libraries";
+      readonly value: Located<References["libraries"]>;
+    }
+  | {
+      readonly kind: "functions_defined";
+      readonly value: Located<References["functions_defined"]>;
+    };
+
+/**
+ * Project one statement's OPEN/CHAIN/EXECUTE/LIBRARY/DEF operands from its
+ * keyword code and comment-free text after the keyword; other statements yield null.
+ */
+export const projectBusinessRulesStatement = (
+  code: number,
+  text: string,
+): BusinessRulesStatementReference | null => {
+  if (code === REFERENCE_STATEMENTS.open) {
+    // A channel may be assigned inline (`#H:=FNHANDLE:`); `:=` is not the separator.
+    const match = /^#\s*((?:[^:]|:=)*?)\s*:(?!=)\s*([^]*)$/u.exec(text);
+    const expression = splitTopLevel(match?.[2] ?? text, ",")[0] ?? "";
+    const literal = stringLiteral(expression);
+    const name =
+      literal === null
+        ? null
+        : (/(?:^|,)\s*NAME\s*=\s*([^,]*)/iu.exec(literal)?.[1]?.trim() ?? null);
+    return {
+      kind: "files_opened",
+      value: { channel: match?.[1] ?? null, expression, literal, name },
+    };
+  }
+  if (
+    code === REFERENCE_STATEMENTS.chain ||
+    code === REFERENCE_STATEMENTS.execute
+  ) {
+    const expression = splitTopLevel(text, ",")[0] ?? "";
+    return {
+      kind:
+        code === REFERENCE_STATEMENTS.chain
+          ? "programs_chained"
+          : "commands_executed",
+      value: { expression, literal: stringLiteral(expression) },
+    };
+  }
+  if (code === REFERENCE_STATEMENTS.library) {
+    const [before = "", ...after] = splitTopLevel(text, ":");
+    const operands = splitTopLevel(before, ",").filter(
+      (operand) => operand !== "" && !/^(?:RELEASE|NOFILES)$/iu.test(operand),
+    );
+    const expression = operands.at(-1) ?? null;
+    return {
+      kind: "libraries",
+      value: {
+        expression,
+        literal: expression === null ? null : stringLiteral(expression),
+        functions: after.join(":").match(FUNCTION_NAME) ?? [],
+      },
+    };
+  }
+  if (code === REFERENCE_STATEMENTS.def) {
+    const name = text.match(FUNCTION_NAME)?.[0];
+    return name === undefined
+      ? null
+      : {
+          kind: "functions_defined",
+          value: { name, library: /^LIBRARY\b/iu.test(text) },
+        };
+  }
+  return null;
+};
+
+/** Empty reference lists in their canonical key order. */
+export const emptyBusinessRulesReferences = (): References => ({
+  files_opened: [],
+  programs_chained: [],
+  commands_executed: [],
+  libraries: [],
+  functions_defined: [],
+});
+
+/** Append one projected statement reference at a program line. */
+export const appendBusinessRulesReference = (
+  references: References,
+  line: number,
+  reference: BusinessRulesStatementReference,
+): void => {
+  switch (reference.kind) {
+    case "files_opened":
+      references.files_opened.push({ line, ...reference.value });
+      return;
+    case "programs_chained":
+      references.programs_chained.push({ line, ...reference.value });
+      return;
+    case "commands_executed":
+      references.commands_executed.push({ line, ...reference.value });
+      return;
+    case "libraries":
+      references.libraries.push({ line, ...reference.value });
+      return;
+    case "functions_defined":
+      references.functions_defined.push({ line, ...reference.value });
+      return;
+  }
+};
+
+/** Project OPEN/CHAIN/EXECUTE/LIBRARY/DEF operands from decoded statement tokens. */
 export const deriveBusinessRulesReferences = (
   records: readonly BusinessRulesTokenizedRecord[],
 ): References => {
-  const references: References = {
-    files_opened: [],
-    programs_chained: [],
-    libraries: [],
-    functions_defined: [],
-  };
+  const references = emptyBusinessRulesReferences();
   for (const record of records)
     for (const { code, text } of statementSegments(record.tokens)) {
-      const line = record.number;
-      if (code === REFERENCE_STATEMENTS.open) {
-        // A channel may be assigned inline (`#H:=FNHANDLE:`); `:=` is not the separator.
-        const match = /^#\s*((?:[^:]|:=)*?)\s*:(?!=)\s*([^]*)$/u.exec(text);
-        const expression = splitTopLevel(match?.[2] ?? text, ",")[0] ?? "";
-        const literal = stringLiteral(expression);
-        const name =
-          literal === null
-            ? null
-            : (/(?:^|,)\s*NAME\s*=\s*([^,]*)/iu.exec(literal)?.[1]?.trim() ??
-              null);
-        references.files_opened.push({
-          line,
-          channel: match?.[1] ?? null,
-          expression,
-          literal,
-          name,
-        });
-      } else if (code === REFERENCE_STATEMENTS.chain) {
-        const expression = splitTopLevel(text, ",")[0] ?? "";
-        references.programs_chained.push({
-          line,
-          expression,
-          literal: stringLiteral(expression),
-        });
-      } else if (code === REFERENCE_STATEMENTS.library) {
-        const [before = "", ...after] = splitTopLevel(text, ":");
-        const operands = splitTopLevel(before, ",").filter(
-          (operand) =>
-            operand !== "" && !/^(?:RELEASE|NOFILES)$/iu.test(operand),
-        );
-        const expression = operands.at(-1) ?? null;
-        references.libraries.push({
-          line,
-          expression,
-          literal: expression === null ? null : stringLiteral(expression),
-          functions: after.join(":").match(FUNCTION_NAME) ?? [],
-        });
-      } else if (code === REFERENCE_STATEMENTS.def) {
-        const name = text.match(FUNCTION_NAME)?.[0];
-        if (name !== undefined)
-          references.functions_defined.push({
-            line,
-            name,
-            library: /^LIBRARY\b/iu.test(text),
-          });
-      }
+      const reference = projectBusinessRulesStatement(code, text);
+      if (reference !== null)
+        appendBusinessRulesReference(references, record.number, reference);
     }
   return references;
 };

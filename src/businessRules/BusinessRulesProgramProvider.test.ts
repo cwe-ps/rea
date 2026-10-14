@@ -3,6 +3,7 @@ import {
   body,
   float64,
   legacyProgram,
+  legacyStrippedProgram,
   modernProgram,
   run,
   stripListing,
@@ -189,6 +190,7 @@ const data = modernProgram(
       number: 50,
       body: body(0x01, 0x12, "#", run(5, "H:=FNH"), ": ", run(5, "F$")),
     },
+    { number: 60, body: body(0x01, 0x36, run(5, '"PROC NEXT"')) },
   ],
   { symbols, symbolSlots: 5 },
 );
@@ -247,7 +249,7 @@ describe("Business Rules! symbols and references", () => {
     ]);
   });
 
-  it("derives OPEN, LIBRARY, DEF and CHAIN references from the listing", () => {
+  it("derives OPEN, LIBRARY, DEF, CHAIN and EXECUTE references from the listing", () => {
     expect(decode(data).references).toEqual({
       evidence_kind: "derived",
       status: "derived",
@@ -268,6 +270,9 @@ describe("Business Rules! symbols and references", () => {
         },
       ],
       programs_chained: [{ line: 40, expression: '"MENU"', literal: "MENU" }],
+      commands_executed: [
+        { line: 60, expression: '"PROC NEXT"', literal: "PROC NEXT" },
+      ],
       libraries: [
         {
           line: 20,
@@ -299,6 +304,7 @@ describe("Business Rules! stripped programs", () => {
       [30, "!"],
       [40, "!"],
       [50, "!"],
+      [60, "!"],
     ]);
     expect(program.references).toMatchObject({
       status: "derived",
@@ -309,6 +315,72 @@ describe("Business Rules! stripped programs", () => {
       { symbol_index: 2, value: "hi" },
     ]);
     expect(program.header.sections.listing.bytes).toBe(0);
+  });
+});
+
+describe("Business Rules! stripped legacy programs", () => {
+  const dim = body(0x01, 0x0b, run(5, "A$*20,B(3)"));
+  const symbolSection = Buffer.concat([
+    Buffer.from("CUSTNAME$", "latin1"),
+    Buffer.from([0x00, 0x09, 0x00]),
+    Buffer.from("X", "latin1"),
+    Buffer.from([0x00, 0x01]),
+  ]);
+  const data = legacyStrippedProgram(
+    [{ number: 5 }, { number: 10, embedded: dim }, { number: 20 }],
+    symbolSection,
+  );
+
+  it("reports the observed line table, embedded DIM text and symbol-section strings", () => {
+    const program = decode(data);
+    expect(program.listing).toMatchObject({ status: "absent", lines: [] });
+    expect(program.references.status).toBe("unknown");
+    expect(program.symbols.status).toBe("unsupported");
+    const facts = program.stripped_legacy;
+    expect(facts?.line_table.status).toBe("decoded");
+    expect(
+      facts?.line_table.lines.map(({ number, flags, embedded, text }) => ({
+        number,
+        flags,
+        embedded,
+        text,
+      })),
+    ).toEqual([
+      { number: 5, flags: 0x08, embedded: false, text: null },
+      { number: 10, flags: 0x8a, embedded: true, text: "DIM A$*20,B(3)" },
+      { number: 20, flags: 0x08, embedded: false, text: null },
+    ]);
+    const embedded = facts?.line_table.lines[1];
+    expect(embedded?.record_offset).toBe(
+      data.indexOf(Buffer.from("\x0100010", "latin1")),
+    );
+    expect(facts?.symbol_section_strings).toEqual([
+      { offset: data.indexOf(Buffer.from("CUSTNAME$")), text: "CUSTNAME$" },
+    ]);
+    expect(program.limitations.join(" ")).toContain("stripped_legacy");
+  });
+
+  it("keeps header facts when the legacy line-table chain is damaged", () => {
+    const damaged = Buffer.from(data);
+    damaged.writeUInt16LE(7, 28);
+    const program = decode(damaged);
+    expect(program.stripped_legacy?.line_table).toEqual({
+      status: "malformed",
+      reason: "Invalid line-table chain.",
+      lines: [],
+    });
+    expect(program.stripped_legacy?.symbol_section_strings).toHaveLength(1);
+  });
+
+  it("omits the fallback facet for programs that keep a saved LIST or use the modern layout", () => {
+    expect(
+      decode(legacyProgram(10, body(0x01, 0x2e))).stripped_legacy,
+    ).toBeNull();
+    expect(
+      decode(
+        stripListing(modernProgram([{ number: 10, body: body(0x01, 0x2e) }])),
+      ).stripped_legacy,
+    ).toBeNull();
   });
 });
 

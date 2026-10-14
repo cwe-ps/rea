@@ -144,13 +144,26 @@ const ASCII_ZERO = 0x30;
 const isAsciiDigit = (value: number | undefined): boolean =>
   value !== undefined && value >= ASCII_ZERO && value <= ASCII_ZERO + 9;
 
+/** One active line-table slot reached from the first active slot. */
+export interface BusinessRulesLineSlot {
+  readonly slot: number;
+  readonly number: number;
+  /** High byte of the slot's first word; only 0x02 (embedded source) is understood. */
+  readonly flags: number;
+  readonly embedded: boolean;
+  /** Execution-section-relative offset of the line's compiled code. */
+  readonly code: number;
+  /** Section-relative offset of the line's source record (saved LIST, or execution when embedded). */
+  readonly source: number;
+}
+
 /** Follow the active line-table chain; unreachable slots are never decoded. */
-export const readBusinessRulesSourceRecords = (
+export const readBusinessRulesLineTable = (
   data: Uint8Array,
   header: BusinessRulesHeader,
-): Result<readonly BusinessRulesSourceRecord[], BusinessRulesFormatFailure> => {
+): Result<readonly BusinessRulesLineSlot[], BusinessRulesFormatFailure> => {
   const bytes = view(data);
-  const records: BusinessRulesSourceRecord[] = [];
+  const slots: BusinessRulesLineSlot[] = [];
   const visited = new Set<number>();
   const little = header.littleEndian;
   let index = header.firstLine;
@@ -163,52 +176,82 @@ export const readBusinessRulesSourceRecords = (
     const first = bytes.getUint32(slot + 4, little);
     const second = bytes.getUint32(slot + 8, little);
     const link = bytes.getUint16(slot + 12, little);
-    const code = header.modern ? first : second;
-    const offset = header.modern ? second : first;
-    if (flags === 0 && code === 0 && offset === 0 && link === 0)
+    if (flags === 0 && first === 0 && second === 0 && link === 0)
       return failure(
         "malformed",
         "Active line-table chain points to an empty slot.",
       );
-    const embedded = (flags & 0x02000000) !== 0;
-    const base = embedded ? header.codeStart : header.listingStart;
-    const limit = embedded ? header.tableStart : data.length;
-    const position = base + offset;
-    if (!(base + 2 <= position && position < limit))
-      return failure(
-        "malformed",
-        `Source pointer outside its section at ${hex(position)}.`,
-      );
-    const size = bytes.getUint16(position - 2, little);
-    if (size < 9 || position - 2 + size > limit)
-      return failure(
-        "malformed",
-        `Invalid source-record size at ${hex(position)}.`,
-      );
-    const record = data.subarray(position, position - 2 + size);
-    const digits = record.subarray(1, 6);
-    if (!digits.every((value) => isAsciiDigit(value)))
-      return failure(
-        "malformed",
-        `Invalid source-record line number at ${hex(position)}.`,
-      );
-    const number = digits.reduce(
-      (total, value) => total * 10 + value - ASCII_ZERO,
-      0,
-    );
-    if (number !== (flags & 0x00ffffff))
-      return failure(
-        "malformed",
-        `Line-table/source number disagreement at ${hex(position)}.`,
-      );
-    records.push({
-      number,
-      body: record.subarray(6),
-      offset: position,
-      embedded,
+    slots.push({
       slot: index,
+      number: flags & 0x00ffffff,
+      flags: flags >>> 24,
+      embedded: (flags & 0x02000000) !== 0,
+      code: header.modern ? first : second,
+      source: header.modern ? second : first,
     });
     index = link;
+  }
+  return ok(slots);
+};
+
+/** Read the length-prefixed source record one line-table slot points to. */
+export const readBusinessRulesSourceRecord = (
+  data: Uint8Array,
+  header: BusinessRulesHeader,
+  line: BusinessRulesLineSlot,
+): Result<BusinessRulesSourceRecord, BusinessRulesFormatFailure> => {
+  const bytes = view(data);
+  const base = line.embedded ? header.codeStart : header.listingStart;
+  const limit = line.embedded ? header.tableStart : data.length;
+  const position = base + line.source;
+  if (!(base + 2 <= position && position < limit))
+    return failure(
+      "malformed",
+      `Source pointer outside its section at ${hex(position)}.`,
+    );
+  const size = bytes.getUint16(position - 2, header.littleEndian);
+  if (size < 9 || position - 2 + size > limit)
+    return failure(
+      "malformed",
+      `Invalid source-record size at ${hex(position)}.`,
+    );
+  const record = data.subarray(position, position - 2 + size);
+  const digits = record.subarray(1, 6);
+  if (!digits.every((value) => isAsciiDigit(value)))
+    return failure(
+      "malformed",
+      `Invalid source-record line number at ${hex(position)}.`,
+    );
+  const number = digits.reduce(
+    (total, value) => total * 10 + value - ASCII_ZERO,
+    0,
+  );
+  if (number !== line.number)
+    return failure(
+      "malformed",
+      `Line-table/source number disagreement at ${hex(position)}.`,
+    );
+  return ok({
+    number,
+    body: record.subarray(6),
+    offset: position,
+    embedded: line.embedded,
+    slot: line.slot,
+  });
+};
+
+/** Read every active saved-LIST (or embedded) source record in chain order. */
+export const readBusinessRulesSourceRecords = (
+  data: Uint8Array,
+  header: BusinessRulesHeader,
+): Result<readonly BusinessRulesSourceRecord[], BusinessRulesFormatFailure> => {
+  const table = readBusinessRulesLineTable(data, header);
+  if (!table.ok) return table;
+  const records: BusinessRulesSourceRecord[] = [];
+  for (const line of table.value) {
+    const record = readBusinessRulesSourceRecord(data, header, line);
+    if (!record.ok) return record;
+    records.push(record.value);
   }
   return ok(records);
 };

@@ -102,4 +102,5 @@ export const REFERENCE_STATEMENTS = {
   chain: 0x31,
   library: 0x0d,
   def: 0x26,
+  execute: 0x36,
 } as const;

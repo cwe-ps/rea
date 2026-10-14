@@ -60,6 +60,32 @@ const literalOrExpression = {
   literal: z.string().nullable(),
 };
 
+/**
+ * Observed facts for a legacy-layout program whose saved LIST was removed,
+ * where neither the execution stream nor the symbol payload is decoded.
+ */
+const strippedLegacySchema = z.strictObject({
+  evidence_kind: z.literal("observed"),
+  line_table: z.strictObject({
+    status: z.enum(["decoded", "malformed"]),
+    reason: z.string().nullable(),
+    lines: z.array(
+      z.strictObject({
+        number: lineReference,
+        slot: byteOffset,
+        flags: z.number().int().min(0).max(0xff),
+        code_offset: byteOffset,
+        embedded: z.boolean(),
+        record_offset: byteOffset.nullable(),
+        text: z.string().nullable(),
+      }),
+    ),
+  }),
+  symbol_section_strings: z.array(
+    z.strictObject({ offset: byteOffset, text: z.string().min(1) }),
+  ),
+});
+
 /** Header, saved LIST, symbols and listing-derived references for one compiled program. */
 export const businessRulesProgramSchema = z
   .strictObject({
@@ -128,6 +154,9 @@ export const businessRulesProgramSchema = z
       programs_chained: z.array(
         z.strictObject({ line: lineReference, ...literalOrExpression }),
       ),
+      commands_executed: z.array(
+        z.strictObject({ line: lineReference, ...literalOrExpression }),
+      ),
       libraries: z.array(
         z.strictObject({
           line: lineReference,
@@ -144,6 +173,7 @@ export const businessRulesProgramSchema = z
         }),
       ),
     }),
+    stripped_legacy: strippedLegacySchema.nullable(),
     limitations: z.array(z.string()),
   })
   .superRefine((value, context) => {
@@ -170,6 +200,16 @@ export const businessRulesProgramSchema = z
         code: "custom",
         path: ["references", "status"],
         message: "References are derived only from a decoded listing.",
+      });
+    if (
+      value.stripped_legacy !== null &&
+      (value.header.variant !== "legacy" ||
+        value.header.sections.listing.bytes !== 0)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["stripped_legacy"],
+        message: "Fallback facts apply only to stripped legacy programs.",
       });
     if (value.symbols.status !== value.string_constants.status)
       context.addIssue({
