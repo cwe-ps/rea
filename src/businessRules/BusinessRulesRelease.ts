@@ -9,3 +9,10 @@ export const BUSINESS_RULES_PROVIDER_IDENTITY = {
 export const BUSINESS_RULES_PROGRAM_LIMITS = {
   inputBytes: 64 * 1024 * 1024,
 } as const;
+
+/** In-process parser for BR runtime status files and plain-text source; no runtime is launched. */
+export const BUSINESS_RULES_ARTIFACT_PROVIDER_IDENTITY = {
+  id: "business-rules-artifact",
+  name: "REA Business Rules! status and source parser",
+  version: "status-1+source-text-1",
+} as const;

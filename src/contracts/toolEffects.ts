@@ -42,6 +42,7 @@ const sessionEvidence = effects({ mutatesSession: true });
 /** Explicit effect audit for every public tool. */
 export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   inspect_business_rules_program: evidence,
+  inspect_business_rules_artifact: evidence,
   inspect_evm_interface: effects({
     mutatesSession: true,
     writesFilesystem: true,

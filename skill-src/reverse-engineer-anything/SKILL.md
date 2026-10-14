@@ -112,7 +112,13 @@ explicit path or endpoint and do not need it.
   targets are line numbers, and `listing.unknown_markers` lists undecoded
   instructions; do not read missing comments as an empty program. Stripped
   legacy-layout programs have no listing; `stripped_legacy` gives their line
-  numbers, embedded DIM/DATA text and raw symbol-section strings. See the
+  numbers, embedded DIM/DATA text and raw symbol-section strings.
+- Business Rules! runtime status/crash file (`ST-FILE.*`) or plain-text source
+  (`.brs`/`.wbs`/`.prc`): `inspect_business_rules_artifact`. Status files give
+  the failing program, line and errors, loaded programs, drive assignments and
+  open channels; source gives numbered lines, labels and references in the same
+  shape as compiled programs. It refuses compiled programs and names
+  `inspect_business_rules_program` instead. See the
   [Business Rules! guide](https://github.com/morluto/rea/blob/main/docs/business-rules-program.md).
 - Explicit Linux ELF file for offline layout, symbols, relocations or static
   mitigation evidence: `inspect_binary_layout`. This target-free operation uses

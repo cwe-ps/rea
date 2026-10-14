@@ -61,6 +61,42 @@ const literalOrExpression = {
 };
 
 /**
+ * OPEN/CHAIN/EXECUTE/LIBRARY/DEF operand lists, each item located by the
+ * caller-supplied fields; compiled programs and source text share these shapes.
+ */
+export const businessRulesReferenceLists = <
+  const Location extends Record<string, z.ZodType>,
+>(
+  location: Location,
+) => ({
+  files_opened: z.array(
+    z.strictObject({
+      ...location,
+      channel: z.string().nullable(),
+      ...literalOrExpression,
+      name: z.string().nullable(),
+    }),
+  ),
+  programs_chained: z.array(
+    z.strictObject({ ...location, ...literalOrExpression }),
+  ),
+  commands_executed: z.array(
+    z.strictObject({ ...location, ...literalOrExpression }),
+  ),
+  libraries: z.array(
+    z.strictObject({
+      ...location,
+      expression: z.string().nullable(),
+      literal: z.string().nullable(),
+      functions: z.array(z.string()),
+    }),
+  ),
+  functions_defined: z.array(
+    z.strictObject({ ...location, name: z.string(), library: z.boolean() }),
+  ),
+});
+
+/**
  * Observed facts for a legacy-layout program whose saved LIST was removed,
  * where neither the execution stream nor the symbol payload is decoded.
  */
@@ -143,35 +179,7 @@ export const businessRulesProgramSchema = z
     references: z.strictObject({
       evidence_kind: z.literal("derived"),
       status: z.enum(["derived", "unknown"]),
-      files_opened: z.array(
-        z.strictObject({
-          line: lineReference,
-          channel: z.string().nullable(),
-          ...literalOrExpression,
-          name: z.string().nullable(),
-        }),
-      ),
-      programs_chained: z.array(
-        z.strictObject({ line: lineReference, ...literalOrExpression }),
-      ),
-      commands_executed: z.array(
-        z.strictObject({ line: lineReference, ...literalOrExpression }),
-      ),
-      libraries: z.array(
-        z.strictObject({
-          line: lineReference,
-          expression: z.string().nullable(),
-          literal: z.string().nullable(),
-          functions: z.array(z.string()),
-        }),
-      ),
-      functions_defined: z.array(
-        z.strictObject({
-          line: lineReference,
-          name: z.string(),
-          library: z.boolean(),
-        }),
-      ),
+      ...businessRulesReferenceLists({ line: lineReference }),
     }),
     stripped_legacy: strippedLegacySchema.nullable(),
     limitations: z.array(z.string()),

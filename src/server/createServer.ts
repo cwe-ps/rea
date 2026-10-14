@@ -2,8 +2,12 @@ import { snapshotEnvironment } from "../process/snapshotEnvironment.js";
 import type { EvmInterfaceService } from "../application/evm/EvmInterfaceService.js";
 import { createEvmInterfaceService } from "../composition/evm.js";
 import { registerEvmTools } from "./registerEvmTools.js";
-import type { BusinessRulesProgramService } from "../application/businessRules/BusinessRulesProgramService.js";
-import { createBusinessRulesProgramService } from "../composition/businessRules.js";
+import {
+  createBusinessRulesArtifactService,
+  createBusinessRulesProgramService,
+  type BusinessRulesArtifactService,
+  type BusinessRulesProgramService,
+} from "../composition/businessRules.js";
 import { registerBusinessRulesTools } from "./registerBusinessRulesTools.js";
 import { registerRecordedCrashTools } from "./registerRecordedCrashTools.js";
 import { createRecordedCrashService } from "../composition/binaryDiagnostics.js";
@@ -83,6 +87,7 @@ export interface CreateServerOptions {
   readonly delivery?: ToolResultDelivery;
   readonly evmInterface?: EvmInterfaceService;
   readonly businessRulesProgram?: BusinessRulesProgramService;
+  readonly businessRulesArtifact?: BusinessRulesArtifactService;
   readonly logger?: Logger;
   readonly binaryLayout?: BinaryLayoutService;
   readonly recordedCrash?: RecordedCrashService;
@@ -286,7 +291,12 @@ const registerConfiguredAnalysisTools = (
   );
   registerBusinessRulesTools(
     server,
-    options.businessRulesProgram ?? createBusinessRulesProgramService(),
+    {
+      program:
+        options.businessRulesProgram ?? createBusinessRulesProgramService(),
+      artifact:
+        options.businessRulesArtifact ?? createBusinessRulesArtifactService(),
+    },
     toolLogger,
     recordEvidence,
   );

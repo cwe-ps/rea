@@ -1,7 +1,48 @@
-import { BusinessRulesProgramService } from "../application/businessRules/BusinessRulesProgramService.js";
+import { BusinessRulesFileService } from "../application/businessRules/BusinessRulesFileService.js";
+import { BusinessRulesArtifactProvider } from "../businessRules/BusinessRulesArtifactProvider.js";
 import { BusinessRulesProgramProvider } from "../businessRules/BusinessRulesProgramProvider.js";
+import {
+  businessRulesArtifactSchema,
+  inspectBusinessRulesArtifactInputSchema,
+  type BusinessRulesArtifact,
+} from "../domain/businessRules/businessRulesArtifact.js";
+import {
+  businessRulesProgramSchema,
+  inspectBusinessRulesProgramInputSchema,
+  type BusinessRulesProgram,
+} from "../domain/businessRules/businessRulesProgram.js";
+
+/** Compiled-program decoding service. */
+export type BusinessRulesProgramService =
+  BusinessRulesFileService<BusinessRulesProgram>;
+
+/** Status-file and plain-text source parsing service. */
+export type BusinessRulesArtifactService =
+  BusinessRulesFileService<BusinessRulesArtifact>;
 
 /** Compose the in-process compiled-program decoder without import-time I/O. */
 export const createBusinessRulesProgramService =
   (): BusinessRulesProgramService =>
-    new BusinessRulesProgramService(new BusinessRulesProgramProvider());
+    new BusinessRulesFileService(
+      {
+        operation: "inspect_business_rules_program",
+        inputSchema: inspectBusinessRulesProgramInputSchema,
+        resultSchema: businessRulesProgramSchema,
+        confidence: () => "derived",
+      },
+      new BusinessRulesProgramProvider(),
+    );
+
+/** Compose the in-process status-file and source parser without import-time I/O. */
+export const createBusinessRulesArtifactService =
+  (): BusinessRulesArtifactService =>
+    new BusinessRulesFileService(
+      {
+        operation: "inspect_business_rules_artifact",
+        inputSchema: inspectBusinessRulesArtifactInputSchema,
+        resultSchema: businessRulesArtifactSchema,
+        confidence: (report) =>
+          report.format === "status-file" ? "observed" : "derived",
+      },
+      new BusinessRulesArtifactProvider(),
+    );

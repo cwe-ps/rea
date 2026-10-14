@@ -1,4 +1,4 @@
-# Compiled Business Rules! programs
+# Business Rules! programs, status files and source
 
 `inspect_business_rules_program` / `inspect-business-rules-program` decodes one
 explicitly selected compiled Business Rules! (BR) program (`.br`, `.wb`). It
@@ -129,6 +129,45 @@ case, abbreviations (`PR` becomes `PRINT`), implicit assignments (shown with
 `LET`), Lexi preprocessing and comments removed before compilation are not
 recoverable. Some keyword spellings are inferred from compiled-only examples.
 Execution-stream limits are listed under [Stripped programs](#stripped-programs).
+
+## Status files and source text
+
+`inspect_business_rules_artifact` / `inspect-business-rules-artifact` reads
+the other Business Rules! files an analyst meets beside compiled programs. It
+classifies by content first and refuses compiled programs (including damaged
+ones) as `unsupported_target` with recovery pointing back to
+`inspect_business_rules_program`; the program decoder in turn points text
+files to this tool. Nothing is run, and paths in the results are not resolved
+on this host.
+
+```sh
+rea inspect-business-rules-artifact './[WBWORK]ST-FILE.07' --json
+rea inspect-business-rules-artifact ./PAYROLL.brs --json
+```
+
+- `format: "status-file"`: a runtime status or crash dump (`ST-FILE.*`),
+  recognized by its leading `WSID=` line and a `Program ID` line whatever the
+  file name. `status` gives the workstation id, date and time, failing program,
+  current line, last error and error line, last OS error, the loaded-program
+  table (path, class, state, run state, links), server/config/workfile/help
+  paths, BRCONFIG drive assignments, open channels with their indented
+  attribute line, and I/O retries. Absent sections are `null` or empty; lines
+  no rule recognizes are kept verbatim with their line number in
+  `unparsed_lines`. Evidence confidence is `observed`.
+- `format: "source-text"`: numbered source (`.brs`, `.wbs`, text saved under
+  `.br`/`.wb`, or any text with numbered BR statements) or an unnumbered
+  procedure script (`.prc`). `source` gives `numbering` (`numbered`,
+  `unnumbered` or `mixed`), the physical line count, each numbered line with
+  its physical line and byte offset, labels, and `references` with the same
+  `files_opened`, `programs_chained`, `commands_executed`, `libraries` and
+  `functions_defined` item shapes as compiled programs, located by BR `line`
+  (`null` in procedure scripts) and `physical_line`. Statements are recognized
+  at the start of a line, after a label, or after `THEN`/`ELSE`, outside string
+  literals and `!` comments; `!:` continuations are joined to their numbered
+  line. Evidence confidence is `derived`.
+
+Real `ST-FILE` samples were not available for the current verification;
+status parsing is covered by synthetic fixtures modeled on the printed layout.
 
 ## Verification
 

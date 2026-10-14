@@ -3,14 +3,9 @@ import {
   type AnalysisExecution,
   type ExecutionOptions,
 } from "../application/AnalysisProvider.js";
-import type { BusinessRulesProgramPort } from "../application/businessRules/BusinessRulesProgramPort.js";
-import { ArtifactReaderFailure } from "../artifacts/ArtifactReader.js";
-import { readStableArtifact } from "../artifacts/readStableArtifact.js";
+import type { BusinessRulesFilePort } from "../application/businessRules/BusinessRulesFileService.js";
 import { AnalysisError } from "../domain/analysisErrorBase.js";
 import {
-  AnalysisAccessDeniedError,
-  AnalysisArtifactChangedError,
-  AnalysisCancelledError,
   AnalysisInputError,
   AnalysisOutputError,
   AnalysisUnsupportedTargetError,
@@ -21,7 +16,6 @@ import {
   type BusinessRulesSymbol,
   type InspectBusinessRulesProgramInput,
 } from "../domain/businessRules/businessRulesProgram.js";
-import { ProviderAdapterError } from "../domain/providerAdapterError.js";
 import { err, ok, type Result } from "../domain/result.js";
 import {
   readBusinessRulesHeader,
@@ -36,6 +30,10 @@ import {
   type BusinessRulesLineSlot,
   type BusinessRulesSymbolRecord,
 } from "./BusinessRulesDecoder.js";
+import {
+  isBusinessRulesText,
+  readBusinessRulesFile,
+} from "./BusinessRulesFileRead.js";
 import { decodeBusinessRulesExecution } from "./BusinessRulesExecutionListing.js";
 import {
   deriveBusinessRulesReferences,
@@ -46,10 +44,7 @@ import {
   BUSINESS_RULES_CLAUSES,
   BUSINESS_RULES_STATEMENTS,
 } from "./BusinessRulesTokens.js";
-import {
-  BUSINESS_RULES_PROGRAM_LIMITS,
-  BUSINESS_RULES_PROVIDER_IDENTITY,
-} from "./BusinessRulesRelease.js";
+import { BUSINESS_RULES_PROVIDER_IDENTITY } from "./BusinessRulesRelease.js";
 
 const OPERATION = "inspect_business_rules_program";
 
@@ -361,6 +356,42 @@ const decodeExecutionListing = (
   };
 };
 
+const strippedLegacyLimitations = (
+  facts: NonNullable<BusinessRulesProgram["stripped_legacy"]>,
+): string[] =>
+  facts.line_table.status === "malformed"
+    ? [
+        ...STRIPPED_LEGACY_LIMITATIONS,
+        `Legacy line table not decoded: ${facts.line_table.reason ?? "malformed"}`,
+      ]
+    : [...STRIPPED_LEGACY_LIMITATIONS];
+
+/** Unrecognized containers are unsupported targets; damaged recognized headers are invalid input. */
+const headerFailure = (
+  path: string,
+  data: Uint8Array,
+  failure: BusinessRulesFormatFailure,
+): AnalysisError =>
+  failure.kind === "unsupported"
+    ? new AnalysisUnsupportedTargetError(
+        OPERATION,
+        path,
+        failure.message,
+        isBusinessRulesText(data)
+          ? {
+              remediationAction:
+                "The file is text, not a compiled program. Inspect Business Rules! source or a runtime status file with inspect_business_rules_artifact.",
+            }
+          : undefined,
+      )
+    : new AnalysisInputError(OPERATION, undefined, [
+        {
+          path: ["path"],
+          reason: "invalid_format",
+          message: `${failure.message} (${path})`,
+        },
+      ]);
+
 /** Decode one compiled program from stable bytes; pure apart from the file read. */
 export const decodeBusinessRulesProgram = (
   path: string,
@@ -371,22 +402,7 @@ export const decodeBusinessRulesProgram = (
   AnalysisError
 > => {
   const header = readBusinessRulesHeader(data);
-  if (!header.ok)
-    return err(
-      header.error.kind === "unsupported"
-        ? new AnalysisUnsupportedTargetError(
-            OPERATION,
-            path,
-            header.error.message,
-          )
-        : new AnalysisInputError(OPERATION, undefined, [
-            {
-              path: ["path"],
-              reason: "invalid_format",
-              message: `${header.error.message} (${path})`,
-            },
-          ]),
-    );
+  if (!header.ok) return err(headerFailure(path, data, header.error));
   const symbols = readBusinessRulesSymbols(data, header.value);
   const stripped = header.value.listingSize === 0;
   // A saved LIST is preferred when present; the execution stream is decoded only for stripped programs.
@@ -404,13 +420,8 @@ export const decodeBusinessRulesProgram = (
       : SAVED_LIST_LIMITATIONS),
     ...BASE_LIMITATIONS,
   ];
-  if (strippedLegacy !== null) {
-    limitations.push(...STRIPPED_LEGACY_LIMITATIONS);
-    if (strippedLegacy.line_table.status === "malformed")
-      limitations.push(
-        `Legacy line table not decoded: ${strippedLegacy.line_table.reason ?? "malformed"}`,
-      );
-  }
+  if (strippedLegacy !== null)
+    limitations.push(...strippedLegacyLimitations(strippedLegacy));
   if (!symbols.ok)
     limitations.push(`Symbol table not decoded: ${symbols.error.message}`);
   if (listing.status !== "decoded")
@@ -457,72 +468,21 @@ export const decodeBusinessRulesProgram = (
   return ok({ program: validated.data, limitations });
 };
 
-const readFailure = (cause: unknown, path: string): AnalysisError => {
-  if (cause instanceof AnalysisError) return cause;
-  if (cause instanceof ArtifactReaderFailure) {
-    if (cause.reason === "cancelled")
-      return new AnalysisCancelledError(OPERATION);
-    if (cause.reason === "integrity")
-      return new AnalysisArtifactChangedError(OPERATION, path, cause.message, {
-        cause,
-      });
-    if (["limit", "path", "format"].includes(cause.reason))
-      return new AnalysisInputError(OPERATION, { cause }, [
-        {
-          path: ["path"],
-          reason: cause.reason === "limit" ? "out_of_range" : "invalid_format",
-          message: cause.message,
-        },
-      ]);
-  }
-  if (cause instanceof Error && "code" in cause) {
-    if (cause.code === "EACCES" || cause.code === "EPERM")
-      return new AnalysisAccessDeniedError(OPERATION, path, cause.code, {
-        cause,
-      });
-    if (cause.code === "ENOENT" || cause.code === "ENOTDIR")
-      return new AnalysisInputError(OPERATION, { cause }, [
-        {
-          path: ["path"],
-          reason: "invalid_value",
-          message: `Selected program could not be read (${String(cause.code)}): ${path}.`,
-        },
-      ]);
-  }
-  return new ProviderAdapterError(
-    BUSINESS_RULES_PROVIDER_IDENTITY.id,
-    OPERATION,
-    {
-      cause,
-      diagnostics: {
-        phase: "artifact-read",
-        reason: cause instanceof Error ? cause.message : String(cause),
-      },
-    },
-  );
-};
-
 /** Decode header, modern symbols and the saved LIST (or, when stripped, the execution stream) from one stable program snapshot. */
-export class BusinessRulesProgramProvider implements BusinessRulesProgramPort {
+export class BusinessRulesProgramProvider implements BusinessRulesFilePort {
   /** Read the selected file once, then decode in-process without executing it. */
   async inspect(
     input: InspectBusinessRulesProgramInput,
     options?: ExecutionOptions,
   ): Promise<Result<AnalysisExecution, AnalysisError>> {
-    let artifact: { readonly bytes: Buffer; readonly sha256: string };
-    try {
-      artifact = await readStableArtifact(
-        input.path,
-        BUSINESS_RULES_PROGRAM_LIMITS.inputBytes,
-        options?.signal,
-      );
-    } catch (cause: unknown) {
-      return err(
-        options?.signal?.aborted
-          ? new AnalysisCancelledError(OPERATION)
-          : readFailure(cause, input.path),
-      );
-    }
+    const read = await readBusinessRulesFile(
+      BUSINESS_RULES_PROVIDER_IDENTITY.id,
+      OPERATION,
+      input.path,
+      options,
+    );
+    if (!read.ok) return read;
+    const artifact = read.value;
     const decoded = decodeBusinessRulesProgram(
       input.path,
       artifact.bytes,

@@ -6,10 +6,28 @@ import {
 } from "./BusinessRulesDecoder.js";
 import { REFERENCE_STATEMENTS } from "./BusinessRulesTokens.js";
 
-type References = Omit<
+type ProgramReferences = Omit<
   BusinessRulesProgram["references"],
   "evidence_kind" | "status"
 >;
+
+type Unlocated<T> = T extends readonly (infer Item)[]
+  ? Omit<Item, "line">
+  : never;
+
+/** Location-free operand values per reference list. */
+type ReferenceValues = {
+  readonly [Kind in keyof ProgramReferences]: Unlocated<
+    ProgramReferences[Kind]
+  >;
+};
+
+/** Reference lists whose items carry a caller-chosen location. */
+export type BusinessRulesReferenceLists<Location> = {
+  [Kind in keyof ReferenceValues]: (Location & ReferenceValues[Kind])[];
+};
+
+type References = BusinessRulesReferenceLists<{ line: number }>;
 
 /** One decoded record's line number and tokens. */
 export interface BusinessRulesTokenizedRecord {
@@ -99,31 +117,27 @@ const statementSegments = (
   return segments;
 };
 
-type Located<T> = T extends readonly (infer Item)[]
-  ? Omit<Item, "line">
-  : never;
-
 /** One statement's reference operands, before a source location is attached. */
 export type BusinessRulesStatementReference =
   | {
       readonly kind: "files_opened";
-      readonly value: Located<References["files_opened"]>;
+      readonly value: ReferenceValues["files_opened"];
     }
   | {
       readonly kind: "programs_chained";
-      readonly value: Located<References["programs_chained"]>;
+      readonly value: ReferenceValues["programs_chained"];
     }
   | {
       readonly kind: "commands_executed";
-      readonly value: Located<References["commands_executed"]>;
+      readonly value: ReferenceValues["commands_executed"];
     }
   | {
       readonly kind: "libraries";
-      readonly value: Located<References["libraries"]>;
+      readonly value: ReferenceValues["libraries"];
     }
   | {
       readonly kind: "functions_defined";
-      readonly value: Located<References["functions_defined"]>;
+      readonly value: ReferenceValues["functions_defined"];
     };
 
 /**
@@ -189,7 +203,9 @@ export const projectBusinessRulesStatement = (
 };
 
 /** Empty reference lists in their canonical key order. */
-export const emptyBusinessRulesReferences = (): References => ({
+export const emptyBusinessRulesReferences = <
+  Location,
+>(): BusinessRulesReferenceLists<Location> => ({
   files_opened: [],
   programs_chained: [],
   commands_executed: [],
@@ -197,27 +213,27 @@ export const emptyBusinessRulesReferences = (): References => ({
   functions_defined: [],
 });
 
-/** Append one projected statement reference at a program line. */
-export const appendBusinessRulesReference = (
-  references: References,
-  line: number,
+/** Append one projected statement reference at a caller-chosen location. */
+export const appendBusinessRulesReference = <Location>(
+  references: BusinessRulesReferenceLists<Location>,
+  location: Location,
   reference: BusinessRulesStatementReference,
 ): void => {
   switch (reference.kind) {
     case "files_opened":
-      references.files_opened.push({ line, ...reference.value });
+      references.files_opened.push({ ...location, ...reference.value });
       return;
     case "programs_chained":
-      references.programs_chained.push({ line, ...reference.value });
+      references.programs_chained.push({ ...location, ...reference.value });
       return;
     case "commands_executed":
-      references.commands_executed.push({ line, ...reference.value });
+      references.commands_executed.push({ ...location, ...reference.value });
       return;
     case "libraries":
-      references.libraries.push({ line, ...reference.value });
+      references.libraries.push({ ...location, ...reference.value });
       return;
     case "functions_defined":
-      references.functions_defined.push({ line, ...reference.value });
+      references.functions_defined.push({ ...location, ...reference.value });
       return;
   }
 };
@@ -226,12 +242,16 @@ export const appendBusinessRulesReference = (
 export const deriveBusinessRulesReferences = (
   records: readonly BusinessRulesTokenizedRecord[],
 ): References => {
-  const references = emptyBusinessRulesReferences();
+  const references = emptyBusinessRulesReferences<{ line: number }>();
   for (const record of records)
     for (const { code, text } of statementSegments(record.tokens)) {
       const reference = projectBusinessRulesStatement(code, text);
       if (reference !== null)
-        appendBusinessRulesReference(references, record.number, reference);
+        appendBusinessRulesReference(
+          references,
+          { line: record.number },
+          reference,
+        );
     }
   return references;
 };

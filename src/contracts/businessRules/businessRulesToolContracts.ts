@@ -2,11 +2,15 @@ import {
   businessRulesProgramSchema,
   inspectBusinessRulesProgramInputSchema,
 } from "../../domain/businessRules/businessRulesProgram.js";
+import {
+  businessRulesArtifactSchema,
+  inspectBusinessRulesArtifactInputSchema,
+} from "../../domain/businessRules/businessRulesArtifact.js";
 import type { ToolContract } from "../toolContractTypes.js";
 import { toolContractMetadata } from "../toolEffects.js";
 import { evidenceResultOf } from "../toolOutputSchemaPrimitives.js";
 
-/** Target-free compiled Business Rules! program inspection. */
+/** Target-free Business Rules! inspection: compiled programs, runtime status files and plain-text source. */
 export const BUSINESS_RULES_TOOL_CONTRACTS = [
   {
     name: "inspect_business_rules_program",
@@ -20,6 +24,25 @@ export const BUSINESS_RULES_TOOL_CONTRACTS = [
       {
         title: "Inspect a compiled Business Rules! program",
         input: { path: "/programs/PAYROLL.WB" },
+      },
+    ],
+  },
+  {
+    name: "inspect_business_rules_artifact",
+    ...toolContractMetadata("inspect_business_rules_artifact"),
+    kind: "artifact-provider",
+    description:
+      "Inspect an explicit local Business Rules! runtime status file or plain-text source without running it. Status files (ST-FILE.*, recognized by their WSID and Program ID lines) return the workstation, failing program and line, last BR and OS errors, loaded-program table, server/config/workfile/help paths, BRCONFIG drive assignments, open channels with their attribute lines and I/O retries; unrecognized lines are kept verbatim in status.unparsed_lines. Source text (.brs/.wbs/.prc, text saved under .br/.wb, or numbered BR statements) returns numbered lines with byte offsets, labels, and OPEN/CHAIN/EXECUTE/LIBRARY/DEF references derived with the same projection as compiled listings. Compiled programs are refused as unsupported targets with recovery pointing to inspect_business_rules_program; other files are unsupported targets.",
+    inputSchema: inspectBusinessRulesArtifactInputSchema,
+    outputSchema: evidenceResultOf(businessRulesArtifactSchema),
+    examples: [
+      {
+        title: "Read a Business Rules! runtime status file",
+        input: { path: "/runtime/ST-FILE.007" },
+      },
+      {
+        title: "Index Business Rules! source references",
+        input: { path: "/source/PAYROLL.brs" },
       },
     ],
   },

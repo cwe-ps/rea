@@ -313,7 +313,10 @@ const workflowAvailabilityFor = ({
           remediation:
             "On Linux x64, set absolute REA_PWNTOOLS_PYTHON to caller-supplied Python with pwntools 4.15.0. No active binary target is required.",
         };
-  if (name === "inspect_business_rules_program")
+  if (
+    name === "inspect_business_rules_program" ||
+    name === "inspect_business_rules_artifact"
+  )
     return { reason: "available", remediation: null };
   if (name === "inspect_evm_interface")
     return policy.evmInterfaceEnabled === true

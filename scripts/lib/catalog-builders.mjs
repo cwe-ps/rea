@@ -162,7 +162,18 @@ export const providerCatalog = (sources) => {
     },
     {
       identity: sources.businessRulesProvider.BUSINESS_RULES_PROVIDER_IDENTITY,
-      contracts: sources.businessRulesContracts.BUSINESS_RULES_TOOL_CONTRACTS,
+      contracts:
+        sources.businessRulesContracts.BUSINESS_RULES_TOOL_CONTRACTS.filter(
+          ({ name }) => name === "inspect_business_rules_program",
+        ),
+    },
+    {
+      identity:
+        sources.businessRulesProvider.BUSINESS_RULES_ARTIFACT_PROVIDER_IDENTITY,
+      contracts:
+        sources.businessRulesContracts.BUSINESS_RULES_TOOL_CONTRACTS.filter(
+          ({ name }) => name === "inspect_business_rules_artifact",
+        ),
     },
     {
       identity: sources.artifactProviders.ARTIFACT_GRAPH_PROVIDER,
