@@ -16,7 +16,7 @@ import {
 export type BusinessRulesProgramService =
   BusinessRulesFileService<BusinessRulesProgram>;
 
-/** Status-file and plain-text source parsing service. */
+/** Status-file, source, runtime-config, screen and compiled-observation parsing service. */
 export type BusinessRulesArtifactService =
   BusinessRulesFileService<BusinessRulesArtifact>;
 
@@ -33,7 +33,7 @@ export const createBusinessRulesProgramService =
       new BusinessRulesProgramProvider(),
     );
 
-/** Compose the in-process status-file and source parser without import-time I/O. */
+/** Compose the in-process artifact parser without import-time I/O. */
 export const createBusinessRulesArtifactService =
   (): BusinessRulesArtifactService =>
     new BusinessRulesFileService(
@@ -42,7 +42,7 @@ export const createBusinessRulesArtifactService =
         inputSchema: inspectBusinessRulesArtifactInputSchema,
         resultSchema: businessRulesArtifactSchema,
         confidence: (report) =>
-          report.format === "status-file" ? "observed" : "derived",
+          report.format === "source-text" ? "derived" : "observed",
       },
       new BusinessRulesArtifactProvider(),
     );

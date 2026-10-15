@@ -1,4 +1,4 @@
-# Business Rules! programs, status files and source
+# Business Rules! programs and runtime artifacts
 
 `inspect_business_rules_program` / `inspect-business-rules-program` decodes one
 explicitly selected compiled Business Rules! (BR) program (`.br`, `.wb`). It
@@ -130,19 +130,20 @@ case, abbreviations (`PR` becomes `PRINT`), implicit assignments (shown with
 recoverable. Some keyword spellings are inferred from compiled-only examples.
 Execution-stream limits are listed under [Stripped programs](#stripped-programs).
 
-## Status files and source text
+## Status files, source text and other artifacts
 
 `inspect_business_rules_artifact` / `inspect-business-rules-artifact` reads
 the other Business Rules! files an analyst meets beside compiled programs. It
-classifies by content first and refuses compiled programs (including damaged
-ones) as `unsupported_target` with recovery pointing back to
-`inspect_business_rules_program`; the program decoder in turn points text
-files to this tool. Nothing is run, and paths in the results are not resolved
-on this host.
+classifies by content signature first, then name, and states how each format
+was determined in `classification.basis` (`content-signature`,
+`extension-and-content` or `extension-only`). The program decoder in turn
+points text files to this tool. Nothing is run, and paths in the results are
+not resolved on this host.
 
 ```sh
 rea inspect-business-rules-artifact './[WBWORK]ST-FILE.07' --json
 rea inspect-business-rules-artifact ./PAYROLL.brs --json
+rea inspect-business-rules-artifact ./wbconfig.sys --json
 ```
 
 - `format: "status-file"`: a runtime status or crash dump (`ST-FILE.*`),
@@ -165,6 +166,23 @@ rea inspect-business-rules-artifact ./PAYROLL.brs --json
   at the start of a line, after a label, or after `THEN`/`ELSE`, outside string
   literals and `!` comments; `!:` continuations are joined to their numbered
   line. Evidence confidence is `derived`.
+- `format: "compiled-program"`: a compiled program (`.br`, `.wb`) recognized by
+  its header signature, including damaged containers the full decoder rejects.
+  `program` is a structural observation only: the header variant (`modern` or
+  `legacy`), raw header fields with per-field verification state, line-record
+  byte-pattern candidates with their ascending segments, and printable string
+  runs. All of it is unverified byte observation, not decoding;
+  `decode_with: "inspect_business_rules_program"` names the tool that decodes
+  the section layout, listing, symbols and references. Evidence confidence is
+  `observed`.
+- `format: "runtime-config"`: a `WBCONFIG.SYS` runtime configuration,
+  recognized by its file name over printable text. `config.directives` lists
+  each non-blank, non-comment (`REM`/`!`) line with its 1-based line number,
+  first token and verbatim text; directive semantics are not evaluated.
+  Evidence confidence is `observed`.
+- `format: "screen-file"`: a `SCREEN.*` screen definition, classified by name
+  only (`extension-only`). Its fixed-record layout is not decoded; only
+  identity and size are reported. Evidence confidence is `observed`.
 
 Real `ST-FILE` samples were not available for the current verification;
 status parsing is covered by synthetic fixtures modeled on the printed layout.

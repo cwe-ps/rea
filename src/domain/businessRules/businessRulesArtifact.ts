@@ -5,13 +5,13 @@ const byteOffset = z.number().int().nonnegative();
 const physicalLine = z.number().int().min(1);
 const programLine = z.number().int().min(0).max(99_999);
 
-/** Select one Business Rules! runtime status file or plain-text source file. */
+/** Select one Business Rules! artifact: compiled program, status file, runtime configuration, screen definition or plain-text source. */
 export const inspectBusinessRulesArtifactInputSchema = z.strictObject({
   path: z
     .string()
     .min(1)
     .describe(
-      "Absolute path to a caller-selected Business Rules! status file (ST-FILE.*) or plain-text source (.brs/.wbs/.prc)",
+      "Absolute path to a caller-selected Business Rules! artifact: compiled program (.br/.wb), status file (ST-FILE.*), WBCONFIG.SYS runtime configuration, SCREEN.* screen definition or plain-text source (.brs/.wbs/.prc)",
     ),
 });
 
@@ -103,11 +103,79 @@ const artifactIdentity = z.strictObject({
 });
 
 const classification = z.strictObject({
-  basis: z.enum(["content-signature", "extension-and-content"]),
+  basis: z.enum([
+    "content-signature",
+    "extension-and-content",
+    "extension-only",
+  ]),
   detail: z.string().min(1),
 });
 
-/** One classified non-compiled Business Rules! artifact and its parsed facet. */
+/**
+ * Raw header word with its verification state. `meaning` is "unknown" unless
+ * the value was confirmed constant across the observed sample set.
+ */
+const compiledHeaderFieldSchema = z.strictObject({
+  name: z.string().min(1),
+  offset: byteOffset,
+  width: z.number().int().min(1),
+  value_hex: z.string().min(1),
+  value: z.number().int().min(0).nullable(),
+  meaning: z.string().min(1),
+});
+
+/** One observed line-number record candidate: marker byte 0x01/0x02 plus five ASCII digits. */
+const compiledLineRecordSchema = z.strictObject({
+  line: programLine,
+  offset: byteOffset,
+  marker: z.number().int().min(0).max(255),
+});
+
+/** Maximal strictly ascending run of line-record candidates in file order. */
+const compiledLineSegmentSchema = z.strictObject({
+  start_line: programLine,
+  end_line: programLine,
+  record_count: z.number().int().min(1),
+  first_offset: byteOffset,
+});
+
+/** Raw printable byte run; an observation, not a confirmed string-table entry. */
+const compiledStringRunSchema = z.strictObject({
+  offset: byteOffset,
+  text: z.string().min(1),
+});
+
+/**
+ * Structural byte observations of a compiled program container, short of the
+ * full decoding that `inspect_business_rules_program` performs.
+ */
+const businessRulesCompiledObservationSchema = z.strictObject({
+  variant: z.enum(["modern", "legacy"]),
+  header_fields: z.array(compiledHeaderFieldSchema),
+  line_map: z.strictObject({
+    record_count: z.number().int().min(0),
+    segment_count: z.number().int().min(0),
+    segments: z.array(compiledLineSegmentSchema),
+    records: z.array(compiledLineRecordSchema),
+  }),
+  strings: z.strictObject({
+    run_count: z.number().int().min(0),
+    runs: z.array(compiledStringRunSchema),
+  }),
+});
+
+/** Observed directive lines of a WBCONFIG.SYS runtime configuration. */
+const businessRulesRuntimeConfigSchema = z.strictObject({
+  directives: z.array(
+    z.strictObject({
+      line: physicalLine,
+      keyword: z.string().min(1),
+      text: z.string(),
+    }),
+  ),
+});
+
+/** One classified Business Rules! artifact and its parsed facet. */
 export const businessRulesArtifactSchema = z.discriminatedUnion("format", [
   z.strictObject({
     artifact: artifactIdentity,
@@ -123,6 +191,27 @@ export const businessRulesArtifactSchema = z.discriminatedUnion("format", [
     source: businessRulesSourceSchema,
     limitations: z.array(z.string()),
   }),
+  z.strictObject({
+    artifact: artifactIdentity,
+    format: z.literal("compiled-program"),
+    classification,
+    program: businessRulesCompiledObservationSchema,
+    decode_with: z.literal("inspect_business_rules_program"),
+    limitations: z.array(z.string()),
+  }),
+  z.strictObject({
+    artifact: artifactIdentity,
+    format: z.literal("runtime-config"),
+    classification,
+    config: businessRulesRuntimeConfigSchema,
+    limitations: z.array(z.string()),
+  }),
+  z.strictObject({
+    artifact: artifactIdentity,
+    format: z.literal("screen-file"),
+    classification,
+    limitations: z.array(z.string()),
+  }),
 ]);
 
 export type InspectBusinessRulesArtifactInput = z.infer<
@@ -131,3 +220,9 @@ export type InspectBusinessRulesArtifactInput = z.infer<
 export type BusinessRulesArtifact = z.infer<typeof businessRulesArtifactSchema>;
 export type BusinessRulesStatus = z.infer<typeof businessRulesStatusSchema>;
 export type BusinessRulesSource = z.infer<typeof businessRulesSourceSchema>;
+export type BusinessRulesCompiledObservation = z.infer<
+  typeof businessRulesCompiledObservationSchema
+>;
+export type BusinessRulesRuntimeConfig = z.infer<
+  typeof businessRulesRuntimeConfigSchema
+>;

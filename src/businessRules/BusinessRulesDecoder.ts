@@ -43,6 +43,24 @@ export interface BusinessRulesHeader {
 const view = (data: Uint8Array): DataView =>
   new DataView(data.buffer, data.byteOffset, data.byteLength);
 
+/**
+ * Container variant from the header signature bytes alone: the modern 51-byte
+ * big-endian header starts 00 00 00 33; the legacy 30/32-byte little-endian
+ * header carries 0x0a at offset 8 and its header size (30 or 32) as u32le at
+ * offset 20. Layout cross-checks are readBusinessRulesHeader's job.
+ */
+export const sniffBusinessRulesHeaderVariant = (
+  data: Uint8Array,
+): "modern" | "legacy" | undefined => {
+  if (data[0] === 0 && data[1] === 0 && data[2] === 0 && data[3] === 0x33)
+    return "modern";
+  if (data.length >= 24 && data[8] === 0x0a) {
+    const base = view(data).getUint32(20, true);
+    if (base === 30 || base === 32) return "legacy";
+  }
+  return undefined;
+};
+
 /** Read and cross-check the section layout without trusting any single field. */
 export const readBusinessRulesHeader = (
   data: Uint8Array,
@@ -53,8 +71,13 @@ export const readBusinessRulesHeader = (
       "File is shorter than any recognized Business Rules! header.",
     );
   const bytes = view(data);
-  const modern =
-    data[0] === 0 && data[1] === 0 && data[2] === 0 && data[3] === 0x33;
+  const variant = sniffBusinessRulesHeaderVariant(data);
+  if (variant === undefined)
+    return failure(
+      "unsupported",
+      "Unsupported Business Rules! header variant.",
+    );
+  const modern = variant === "modern";
   let header: BusinessRulesHeader;
   if (modern) {
     if (data.length < 51)
@@ -86,11 +109,9 @@ export const readBusinessRulesHeader = (
   } else {
     const u32 = (position: number): number => bytes.getUint32(position, true);
     const base = u32(20);
-    if (data[8] !== 10 || (base !== 30 && base !== 32))
-      return failure(
-        "unsupported",
-        "Unsupported Business Rules! header variant.",
-      );
+    // The variant sniff already confirmed 30 or 32; narrow without a cast.
+    if (base !== 30 && base !== 32)
+      return failure("malformed", "Inconsistent legacy header size.");
     const codeSize = u32(0);
     const lineSlots = bytes.getUint16(26, true);
     const tableStart = base + codeSize;

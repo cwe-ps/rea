@@ -113,12 +113,16 @@ explicit path or endpoint and do not need it.
   instructions; do not read missing comments as an empty program. Stripped
   legacy-layout programs have no listing; `stripped_legacy` gives their line
   numbers, embedded DIM/DATA text and raw symbol-section strings.
-- Business Rules! runtime status/crash file (`ST-FILE.*`) or plain-text source
-  (`.brs`/`.wbs`/`.prc`): `inspect_business_rules_artifact`. Status files give
-  the failing program, line and errors, loaded programs, drive assignments and
-  open channels; source gives numbered lines, labels and references in the same
-  shape as compiled programs. It refuses compiled programs and names
-  `inspect_business_rules_program` instead. See the
+- Business Rules! runtime artifacts: `inspect_business_rules_artifact`. Status
+  files (`ST-FILE.*`) give the failing program, line and errors, loaded
+  programs, drive assignments and open channels; plain-text source
+  (`.brs`/`.wbs`/`.prc`) gives numbered lines, labels and references in the same
+  shape as compiled programs; `WBCONFIG.SYS` gives directive lines;
+  `SCREEN.*` definitions are classified by name only, record layout not
+  decoded. Compiled programs get a structural observation (header variant, raw
+  header fields, line-record byte patterns, printable runs — all unverified)
+  whose `decode_with` names `inspect_business_rules_program` for full
+  decoding. `classification.basis` states how each format was determined. See the
   [Business Rules! guide](https://github.com/morluto/rea/blob/main/docs/business-rules-program.md).
 - Explicit Linux ELF file for offline layout, symbols, relocations or static
   mitigation evidence: `inspect_binary_layout`. This target-free operation uses
