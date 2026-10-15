@@ -10,19 +10,25 @@ import { createServer } from "../../../src/server/createServer.js";
 import { createTestBinarySession } from "../../fixtures/binarySession.js";
 import {
   BR_SOURCE_TEXT,
+  CONFIG_TEXT,
+  SCREEN_BYTES,
   STATUS_FILE_TEXT,
 } from "../../fixtures/businessRules/artifacts.js";
 import { body, modernProgram } from "../../fixtures/businessRules/program.js";
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 
-it("reads status files and source text through MCP and routes compiled programs to the decoder", async () => {
+it("reads status, source, config, screen and compiled artifacts through MCP", async () => {
   const directory = await createTestTempDirectory("rea-br-artifact-mcp-");
   const status = join(directory, "[WBWORK]ST-FILE.07");
   const source = join(directory, "EXAMPLE.brs");
+  const config = join(directory, "wbconfig.sys");
+  const screen = join(directory, "SCREEN.042");
   const program = join(directory, "PROGRAM.WB");
   const notes = join(directory, "notes.txt");
   await writeFile(status, STATUS_FILE_TEXT, "latin1");
   await writeFile(source, BR_SOURCE_TEXT, "latin1");
+  await writeFile(config, CONFIG_TEXT, "latin1");
+  await writeFile(screen, SCREEN_BYTES);
   await writeFile(
     program,
     modernProgram([{ number: 10, body: body(0x01, 0x2e) }]),
@@ -106,14 +112,28 @@ it("reads status files and source text through MCP and routes compiled programs 
     { line: 60, physical_line: 6, expression: '"AFTER"', literal: "AFTER" },
   ]);
 
-  const compiled = await client.callTool({
-    name: "inspect_business_rules_artifact",
-    arguments: { path: program },
+  const compiled = await inspect(program);
+  expect(compiled.evidence.confidence).toBe("observed");
+  if (compiled.result.format !== "compiled-program")
+    throw new Error("expected a compiled-program observation");
+  expect(compiled.result.program.variant).toBe("modern");
+  expect(compiled.result.decode_with).toBe("inspect_business_rules_program");
+  expect(compiled.result.limitations.join(" ")).toContain("token stream");
+
+  const runtimeConfig = await inspect(config);
+  if (runtimeConfig.result.format !== "runtime-config")
+    throw new Error("expected a runtime configuration");
+  expect(runtimeConfig.result.config.directives[0]).toEqual({
+    line: 1,
+    keyword: "SETENV",
+    text: "SETENV WBCONFIG 9.1J.001",
   });
-  expect(compiled.isError).toBe(true);
-  expect(JSON.stringify(compiled.content)).toMatch(
-    /inspect_business_rules_program/u,
-  );
+
+  const screenDefinition = await inspect(screen);
+  if (screenDefinition.result.format !== "screen-file")
+    throw new Error("expected a screen definition");
+  expect(screenDefinition.result.classification.basis).toBe("extension-only");
+
   const text = await client.callTool({
     name: "inspect_business_rules_program",
     arguments: { path: source },

@@ -4,23 +4,40 @@ import { join } from "node:path";
 import { describe, expect } from "vitest";
 import { parseBusinessRulesArtifact } from "../../../src/businessRules/BusinessRulesArtifactProvider.js";
 import {
+  CONFIG_TEXT,
   PRC_TEXT,
+  SCREEN_BYTES,
   STATUS_FILE_TEXT,
 } from "../../fixtures/businessRules/artifacts.js";
+import { body, modernProgram } from "../../fixtures/businessRules/program.js";
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 import { cliTest } from "../../support/cli/cliFixture.js";
 
 describe("inspect-business-rules-artifact CLI", () => {
   cliTest(
-    "returns the shared status and source results through the compiled CLI",
+    "returns the shared artifact results through the compiled CLI",
     async ({ cli }) => {
       const directory = await createTestTempDirectory("rea-br-artifact-cli-");
       const cases = [
-        { path: join(directory, "ST-FILE.07"), text: STATUS_FILE_TEXT },
-        { path: join(directory, "NEXT.PRC"), text: PRC_TEXT },
+        {
+          path: join(directory, "ST-FILE.07"),
+          bytes: Buffer.from(STATUS_FILE_TEXT, "latin1"),
+        },
+        {
+          path: join(directory, "NEXT.PRC"),
+          bytes: Buffer.from(PRC_TEXT, "latin1"),
+        },
+        {
+          path: join(directory, "wbconfig.sys"),
+          bytes: Buffer.from(CONFIG_TEXT, "latin1"),
+        },
+        { path: join(directory, "SCREEN.042"), bytes: SCREEN_BYTES },
+        {
+          path: join(directory, "PROGRAM.WB"),
+          bytes: modernProgram([{ number: 10, body: body(0x01, 0x2e) }]),
+        },
       ];
-      for (const { path, text } of cases) {
-        const bytes = Buffer.from(text, "latin1");
+      for (const { path, bytes } of cases) {
         await writeFile(path, bytes);
         const expected = parseBusinessRulesArtifact(
           path,

@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   BR_SOURCE_TEXT,
+  CONFIG_TEXT,
   PRC_TEXT,
+  SCREEN_BYTES,
   STATUS_FILE_MINIMAL_TEXT,
   STATUS_FILE_TEXT,
+  legacyObservationProgram,
+  modernObservationProgram,
 } from "../../tests/fixtures/businessRules/artifacts.js";
 import {
   body,
@@ -240,25 +244,121 @@ describe("Business Rules! source text", () => {
   });
 });
 
-describe("Business Rules! artifact refusals", () => {
-  it("points compiled programs, including damaged ones, to the program decoder", () => {
-    const program = modernProgram([{ number: 10, body: body(0x01, 0x2e) }]);
-    const damaged = Buffer.from(program);
-    damaged.writeUInt32BE(0xffff, 4);
-    for (const data of [
-      program,
-      legacyProgram(10, body(0x01, 0x2e)),
-      damaged,
-    ]) {
-      const error = refusal("/programs/X.WB", data);
-      expect(error).toBeInstanceOf(AnalysisUnsupportedTargetError);
-      if (!(error instanceof AnalysisUnsupportedTargetError)) return;
-      expect(error.remediationAction).toMatch(
-        /inspect_business_rules_program/u,
-      );
-    }
+describe("Business Rules! compiled programs", () => {
+  it("reports the structural observation and points to the full decoder", () => {
+    const artifact = parse(
+      "/programs/X.WB",
+      modernProgram([{ number: 10, body: body(0x01, 0x2e) }]),
+    );
+    if (artifact.format !== "compiled-program")
+      throw new Error(artifact.format);
+    expect(artifact.classification.basis).toBe("content-signature");
+    expect(artifact.program.variant).toBe("modern");
+    expect(artifact.decode_with).toBe("inspect_business_rules_program");
+    expect(artifact.program.line_map.records).toContainEqual({
+      line: 10,
+      offset: 69,
+      marker: 0x01,
+    });
+    const fields = new Map(
+      artifact.program.header_fields.map((entry) => [entry.name, entry]),
+    );
+    expect(fields.get("signature_0x00")?.value).toBe(0x33);
+    expect(fields.get("marker_0x2e")?.value).toBe(0x0118);
+    expect(artifact.limitations.join(" ")).toContain("token stream");
   });
 
+  it("observes the legacy header variant", () => {
+    const artifact = parse(
+      "/programs/OLD.WB",
+      legacyProgram(10, body(0x01, 0x2e)),
+    );
+    if (artifact.format !== "compiled-program")
+      throw new Error(artifact.format);
+    expect(artifact.program.variant).toBe("legacy");
+    const fields = new Map(
+      artifact.program.header_fields.map((entry) => [entry.name, entry]),
+    );
+    expect(fields.get("signature_0x08")?.value).toBe(0x0a);
+    expect(fields.get("word_0x14_le32")?.value).toBe(30);
+  });
+
+  it("observes damaged containers the full decoder rejects, with the reason", () => {
+    const damaged = Buffer.from(
+      modernProgram([{ number: 10, body: body(0x01, 0x2e) }]),
+    );
+    damaged.writeUInt32BE(0xffff, 4);
+    for (const [name, data] of [
+      ["damaged-modern", damaged],
+      ["signature-only-legacy", legacyObservationProgram()],
+      ["signature-only-modern", modernObservationProgram()],
+    ] as const) {
+      const artifact = parse(`/programs/${name}.WB`, data);
+      if (artifact.format !== "compiled-program")
+        throw new Error(artifact.format);
+      expect(artifact.decode_with).toBe("inspect_business_rules_program");
+      expect(artifact.limitations.join(" ")).toContain(
+        "section layout is inconsistent",
+      );
+    }
+    expect(parse("/programs/Y.WB", modernObservationProgram())).toMatchObject({
+      program: { variant: "modern" },
+    });
+  });
+});
+
+describe("Business Rules! runtime configuration", () => {
+  it("indexes WBCONFIG.SYS directives, skipping blank and comment lines", () => {
+    const artifact = parse("/runtime/wbconfig.sys", CONFIG_TEXT);
+    if (artifact.format !== "runtime-config") throw new Error(artifact.format);
+    expect(artifact.classification.basis).toBe("extension-and-content");
+    expect(artifact.config.directives).toEqual([
+      { line: 1, keyword: "SETENV", text: "SETENV WBCONFIG 9.1J.001" },
+      { line: 4, keyword: "S/23-DRIVES", text: "S/23-DRIVES HBCDFIKLM" },
+      {
+        line: 5,
+        keyword: "APPLICATION_NAME",
+        text: "APPLICATION_NAME CM 9.1 - Starting Up",
+      },
+      { line: 6, keyword: "WSID", text: "WSID 900+" },
+      {
+        line: 7,
+        keyword: "KEYBOARD",
+        text: "KEYBOARD 7200,0010         ; Control Print Screen is ^P",
+      },
+    ]);
+    expect(artifact.limitations.join(" ")).toContain("verbatim");
+  });
+
+  it("requires the WBCONFIG.SYS name over printable text", () => {
+    const renamed = refusal(
+      "/runtime/startup.txt",
+      Buffer.from(CONFIG_TEXT, "latin1"),
+    );
+    expect(renamed).toBeInstanceOf(AnalysisUnsupportedTargetError);
+    const binary = refusal(
+      "/runtime/wbconfig.sys",
+      Buffer.from([0x00, 0x01, 0x02, 0x03, 0xff]),
+    );
+    expect(binary).toBeInstanceOf(AnalysisUnsupportedTargetError);
+  });
+});
+
+describe("Business Rules! screen definitions", () => {
+  it("classifies SCREEN.* by name only and decodes no record layout", () => {
+    const artifact = parse("/runtime/SCREEN.042", SCREEN_BYTES);
+    if (artifact.format !== "screen-file") throw new Error(artifact.format);
+    expect(artifact.classification).toEqual({
+      basis: "extension-only",
+      detail:
+        "SCREEN session screen-definition name; the content carries no verified signature and the fixed-record layout is not decoded.",
+    });
+    expect(artifact.artifact.bytes).toBe(SCREEN_BYTES.length);
+    expect(artifact.limitations.join(" ")).toContain("not decoded");
+  });
+});
+
+describe("Business Rules! artifact refusals", () => {
   it("refuses binary content and unrelated text as unsupported targets", () => {
     for (const data of [
       Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0, 1, 2, 3]),

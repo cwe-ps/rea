@@ -94,3 +94,84 @@ export const PRC_TEXT = [
   "LET FnScript=T(1)",
   "",
 ].join("\r\n");
+
+/** WBCONFIG.SYS-style runtime configuration with comments and blank lines. */
+export const CONFIG_TEXT = [
+  "SETENV WBCONFIG 9.1J.001",
+  "",
+  "REM -- a comment",
+  "S/23-DRIVES HBCDFIKLM",
+  "APPLICATION_NAME CM 9.1 - Starting Up",
+  "WSID 900+",
+  "KEYBOARD 7200,0010         ; Control Print Screen is ^P",
+  "",
+].join("\r\n");
+
+/**
+ * SCREEN.* fixed-record bytes: no verified signature, so observation is
+ * identity and classification only. Deliberately not plain text.
+ */
+export const SCREEN_BYTES = Buffer.from([
+  0x4d, 0x45, 0x4e, 0x55, 0x00, 0x01, 0x18, 0x50, 0x02, 0x0f, 0xff, 0x00, 0x44,
+  0x41, 0x54, 0x41, 0x00, 0x00,
+]);
+
+/**
+ * Signature-only containers for the compiled-program structural observation:
+ * they carry the header variant magic and crafted byte patterns but are not
+ * decodable by the full container layout checks. Variant names follow the
+ * decoder: "modern" is the 51-byte big-endian header, "legacy" the 30/32-byte
+ * little-endian one.
+ */
+
+/** Minimal legacy container with two line records and a string run. */
+export const legacyObservationProgram = (): Buffer => {
+  const header = Buffer.alloc(48);
+  header.writeUInt32LE(64, 0);
+  header.writeUInt32LE(0, 4);
+  header[8] = 0x0a;
+  header[9] = 0x1f;
+  header[10] = 0x02;
+  header[11] = 0xa0;
+  header[12] = 0x01;
+  header[13] = 0x18;
+  header.writeUInt32LE(96, 16);
+  header.writeUInt32LE(30, 20);
+  const text = Buffer.from("DIM FLAG,TOTAL", "ascii");
+  return Buffer.concat([
+    header,
+    Buffer.from([0x02]),
+    Buffer.from("00010", "ascii"),
+    Buffer.from([0x01, 0x0b, 0x05, text.length]),
+    text,
+    Buffer.from([0x00, 0x03, 0x00, 0x4b, 0x40, 0x10, 0x00]),
+    Buffer.from([0x01]),
+    Buffer.from("00020", "ascii"),
+    Buffer.from([0x01, 0x0c]),
+    Buffer.from('"1,1,C 8,[S]"', "ascii"),
+    Buffer.from([0x00]),
+  ]);
+};
+
+/** Minimal modern container with a line-number reset (two segments). */
+export const modernObservationProgram = (): Buffer => {
+  const header = Buffer.alloc(48);
+  header.set([0x00, 0x00, 0x00, 0x33], 0);
+  header.writeUInt32BE(0x00000100, 4);
+  header.set([0x0c, 0x26, 0x03], 8);
+  header[11] = 0xa0;
+  header[46] = 0x01;
+  header[47] = 0x18;
+  return Buffer.concat([
+    header,
+    Buffer.from([0x01]),
+    Buffer.from("00070", "ascii"),
+    Buffer.from([0x07, 0x00]),
+    Buffer.from([0x02]),
+    Buffer.from("00090", "ascii"),
+    Buffer.from([0x00]),
+    Buffer.from([0x01]),
+    Buffer.from("00010", "ascii"),
+    Buffer.from([0x00]),
+  ]);
+};
