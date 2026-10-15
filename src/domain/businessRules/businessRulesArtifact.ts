@@ -11,7 +11,7 @@ export const inspectBusinessRulesArtifactInputSchema = z.strictObject({
     .string()
     .min(1)
     .describe(
-      "Absolute path to a caller-selected Business Rules! artifact: compiled program (.br/.wb), status file (ST-FILE.*), WBCONFIG.SYS runtime configuration, SCREEN.* screen definition or plain-text source (.brs/.wbs/.prc)",
+      "Absolute path to a caller-selected Business Rules! artifact: compiled program (.br/.wb), status file (ST-FILE.*), WBCONFIG.SYS runtime configuration, SCREEN.<number> screen definition or plain-text source (.brs/.wbs/.prc)",
     ),
 });
 
@@ -112,8 +112,9 @@ const classification = z.strictObject({
 });
 
 /**
- * Raw header word with its verification state. `meaning` is "unknown" unless
- * the value was confirmed constant across the observed sample set.
+ * Raw header word. `meaning` is "unknown" unless the value was confirmed
+ * constant across the observed sample set; constant fields state whether the
+ * read value matches that constant.
  */
 const compiledHeaderFieldSchema = z.strictObject({
   name: z.string().min(1),
@@ -147,7 +148,9 @@ const compiledStringRunSchema = z.strictObject({
 
 /**
  * Structural byte observations of a compiled program container, short of the
- * full decoding that `inspect_business_rules_program` performs.
+ * full decoding that `inspect_business_rules_program` performs. Counts reflect
+ * the full scan; the listed records, segments and runs are capped with the
+ * difference reported in the `_omitted` fields.
  */
 const businessRulesCompiledObservationSchema = z.strictObject({
   variant: z.enum(["modern", "legacy"]),
@@ -155,11 +158,14 @@ const businessRulesCompiledObservationSchema = z.strictObject({
   line_map: z.strictObject({
     record_count: z.number().int().min(0),
     segment_count: z.number().int().min(0),
+    segments_omitted: z.number().int().min(0),
     segments: z.array(compiledLineSegmentSchema),
+    records_omitted: z.number().int().min(0),
     records: z.array(compiledLineRecordSchema),
   }),
   strings: z.strictObject({
     run_count: z.number().int().min(0),
+    runs_omitted: z.number().int().min(0),
     runs: z.array(compiledStringRunSchema),
   }),
 });

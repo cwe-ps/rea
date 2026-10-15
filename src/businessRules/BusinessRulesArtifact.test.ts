@@ -265,7 +265,28 @@ describe("Business Rules! compiled programs", () => {
     );
     expect(fields.get("signature_0x00")?.value).toBe(0x33);
     expect(fields.get("marker_0x2e")?.value).toBe(0x0118);
+    expect(fields.get("marker_0x2e")?.meaning).toContain("matches");
     expect(artifact.limitations.join(" ")).toContain("token stream");
+    expect(artifact.limitations.join(" ")).toContain(
+      "decodes this file cleanly",
+    );
+  });
+
+  it("reads marker fields from the bytes instead of assuming the constant", () => {
+    const mutated = Buffer.from(
+      modernProgram([{ number: 10, body: body(0x01, 0x2e) }]),
+    );
+    mutated[46] = 0xaa;
+    mutated[47] = 0xbb;
+    const artifact = parse("/programs/X.WB", mutated);
+    if (artifact.format !== "compiled-program")
+      throw new Error(artifact.format);
+    const marker = artifact.program.header_fields.find(
+      (entry) => entry.name === "marker_0x2e",
+    );
+    expect(marker?.value_hex).toBe("aabb");
+    expect(marker?.value).toBe(0xaabb);
+    expect(marker?.meaning).toContain("differs from");
   });
 
   it("observes the legacy header variant", () => {
@@ -283,22 +304,43 @@ describe("Business Rules! compiled programs", () => {
     expect(fields.get("word_0x14_le32")?.value).toBe(30);
   });
 
-  it("observes damaged containers the full decoder rejects, with the reason", () => {
+  it("names damage the full decoder finds beyond the header", () => {
+    const looped = Buffer.from(
+      modernProgram([{ number: 10, body: body(0x01, 0x2e) }]),
+    );
+    // Point the single line-table slot's chain link at itself.
+    looped.writeUInt16BE(0, looped.readUInt32BE(22) + 12);
+    const artifact = parse("/programs/X.WB", looped);
+    if (artifact.format !== "compiled-program")
+      throw new Error(artifact.format);
+    expect(artifact.limitations.join(" ")).toContain(
+      "damage beyond the header",
+    );
+    expect(artifact.limitations.join(" ")).toContain("listing");
+  });
+
+  it("flags any header failure, including too-short files, as damage", () => {
     const damaged = Buffer.from(
       modernProgram([{ number: 10, body: body(0x01, 0x2e) }]),
     );
     damaged.writeUInt32BE(0xffff, 4);
+    const tinyModern = Buffer.from([0x00, 0x00, 0x00, 0x33]);
+    const tinyLegacy = Buffer.alloc(24);
+    tinyLegacy[8] = 0x0a;
+    tinyLegacy.writeUInt32LE(30, 20);
     for (const [name, data] of [
       ["damaged-modern", damaged],
       ["signature-only-legacy", legacyObservationProgram()],
       ["signature-only-modern", modernObservationProgram()],
+      ["tiny-modern", tinyModern],
+      ["tiny-legacy", tinyLegacy],
     ] as const) {
       const artifact = parse(`/programs/${name}.WB`, data);
       if (artifact.format !== "compiled-program")
         throw new Error(artifact.format);
       expect(artifact.decode_with).toBe("inspect_business_rules_program");
       expect(artifact.limitations.join(" ")).toContain(
-        "section layout is inconsistent",
+        "Header layout checks failed",
       );
     }
     expect(parse("/programs/Y.WB", modernObservationProgram())).toMatchObject({
@@ -330,6 +372,19 @@ describe("Business Rules! runtime configuration", () => {
     expect(artifact.limitations.join(" ")).toContain("verbatim");
   });
 
+  it("splits directives on bare carriage returns", () => {
+    const artifact = parse(
+      "/runtime/wbconfig.sys",
+      "DRIVE F:\\ROOT\r\rFOO bar\r\nWSID 900+",
+    );
+    if (artifact.format !== "runtime-config") throw new Error(artifact.format);
+    expect(artifact.config.directives).toEqual([
+      { line: 1, keyword: "DRIVE", text: "DRIVE F:\\ROOT" },
+      { line: 3, keyword: "FOO", text: "FOO bar" },
+      { line: 4, keyword: "WSID", text: "WSID 900+" },
+    ]);
+  });
+
   it("requires the WBCONFIG.SYS name over printable text", () => {
     const renamed = refusal(
       "/runtime/startup.txt",
@@ -345,13 +400,13 @@ describe("Business Rules! runtime configuration", () => {
 });
 
 describe("Business Rules! screen definitions", () => {
-  it("classifies SCREEN.* by name only and decodes no record layout", () => {
+  it("classifies SCREEN.<number> by name only and decodes no record layout", () => {
     const artifact = parse("/runtime/SCREEN.042", SCREEN_BYTES);
     if (artifact.format !== "screen-file") throw new Error(artifact.format);
     expect(artifact.classification).toEqual({
       basis: "extension-only",
       detail:
-        "SCREEN session screen-definition name; the content carries no verified signature and the fixed-record layout is not decoded.",
+        "SCREEN.<number> session screen-definition name; the content carries no verified signature and the fixed-record layout is not decoded.",
     });
     expect(artifact.artifact.bytes).toBe(SCREEN_BYTES.length);
     expect(artifact.limitations.join(" ")).toContain("not decoded");

@@ -169,9 +169,14 @@ rea inspect-business-rules-artifact ./wbconfig.sys --json
 - `format: "compiled-program"`: a compiled program (`.br`, `.wb`) recognized by
   its header signature, including damaged containers the full decoder rejects.
   `program` is a structural observation only: the header variant (`modern` or
-  `legacy`), raw header fields with per-field verification state, line-record
-  byte-pattern candidates with their ascending segments, and printable string
-  runs. All of it is unverified byte observation, not decoding;
+  `legacy`), raw header fields whose `meaning` is `unknown` unless a constant
+  was confirmed (and whether marker fields match that constant), line-record
+  byte-pattern candidates (marker 0x01/0x02 plus five ASCII digits not followed
+  by a sixth) with their ascending segments, and printable string runs. The
+  lists are capped (4096 records, 4096 segments, 2048 runs) with the totals in
+  the counts and the difference in the `_omitted` fields. All of it is
+  unverified byte observation, not decoding; a `Cross-check:` limitation names
+  any damage the full decoder finds beyond the header, and
   `decode_with: "inspect_business_rules_program"` names the tool that decodes
   the section layout, listing, symbols and references. Evidence confidence is
   `observed`.
@@ -180,8 +185,8 @@ rea inspect-business-rules-artifact ./wbconfig.sys --json
   each non-blank, non-comment (`REM`/`!`) line with its 1-based line number,
   first token and verbatim text; directive semantics are not evaluated.
   Evidence confidence is `observed`.
-- `format: "screen-file"`: a `SCREEN.*` screen definition, classified by name
-  only (`extension-only`). Its fixed-record layout is not decoded; only
+- `format: "screen-file"`: a `SCREEN.<number>` screen definition, classified by
+  name only (`extension-only`). Its fixed-record layout is not decoded; only
   identity and size are reported. Evidence confidence is `observed`.
 
 Real `ST-FILE` samples were not available for the current verification;

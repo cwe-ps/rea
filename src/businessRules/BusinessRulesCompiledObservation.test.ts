@@ -4,7 +4,9 @@ import {
   modernObservationProgram,
 } from "../../tests/fixtures/businessRules/artifacts.js";
 import {
+  COMPILED_OBSERVATION_CAPS,
   COMPILED_OBSERVATION_LIMITATIONS,
+  compiledObservationTruncationLimitations,
   observeBusinessRulesCompiledProgram,
 } from "./BusinessRulesCompiledObservation.js";
 
@@ -64,6 +66,48 @@ describe("observeBusinessRulesCompiledProgram", () => {
       ),
     ).toBeNull();
     expect(observeBusinessRulesCompiledProgram(Buffer.alloc(64))).toBeNull();
+  });
+
+  it("requires a non-digit after the five record digits", () => {
+    const header = legacyObservationProgram().subarray(0, 48);
+    const sixDigits = Buffer.concat([
+      header,
+      Buffer.from([0x01]),
+      Buffer.from("123456", "ascii"),
+    ]);
+    expect(
+      observeBusinessRulesCompiledProgram(sixDigits)?.line_map.record_count,
+    ).toBe(0);
+    const fiveDigits = Buffer.concat([
+      header,
+      Buffer.from([0x01]),
+      Buffer.from("12345", "ascii"),
+      Buffer.from([0x00]),
+    ]);
+    expect(
+      observeBusinessRulesCompiledProgram(fiveDigits)?.line_map.records,
+    ).toEqual([{ line: 12345, offset: 48, marker: 0x01 }]);
+  });
+
+  it("caps the observation lists and reports the omitted counts", () => {
+    const header = legacyObservationProgram().subarray(0, 48);
+    const parts: Buffer[] = [header];
+    const total = COMPILED_OBSERVATION_CAPS.lineRecords + 10;
+    for (let index = 0; index < total; index += 1)
+      parts.push(
+        Buffer.from([0x01]),
+        Buffer.from(String((index * 7) % 100_000).padStart(5, "0"), "ascii"),
+      );
+    const program = observeBusinessRulesCompiledProgram(Buffer.concat(parts));
+    if (program === null) throw new Error("expected an observation");
+    expect(program.line_map.record_count).toBe(total);
+    expect(program.line_map.records).toHaveLength(
+      COMPILED_OBSERVATION_CAPS.lineRecords,
+    );
+    expect(program.line_map.records_omitted).toBe(10);
+    expect(
+      compiledObservationTruncationLimitations(program).join(" "),
+    ).toContain("4096 entries (10 omitted)");
   });
 
   it("declares the token stream and header semantics as unknown", () => {

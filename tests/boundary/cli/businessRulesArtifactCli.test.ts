@@ -36,6 +36,10 @@ describe("inspect-business-rules-artifact CLI", () => {
           path: join(directory, "PROGRAM.WB"),
           bytes: modernProgram([{ number: 10, body: body(0x01, 0x2e) }]),
         },
+        {
+          path: join(directory, "TINY.WB"),
+          bytes: Buffer.from([0x00, 0x00, 0x00, 0x33]),
+        },
       ];
       for (const { path, bytes } of cases) {
         await writeFile(path, bytes);

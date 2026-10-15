@@ -119,6 +119,18 @@ it("reads status, source, config, screen and compiled artifacts through MCP", as
   expect(compiled.result.program.variant).toBe("modern");
   expect(compiled.result.decode_with).toBe("inspect_business_rules_program");
   expect(compiled.result.limitations.join(" ")).toContain("token stream");
+  expect(compiled.result.limitations.join(" ")).toContain(
+    "decodes this file cleanly",
+  );
+
+  const tiny = join(directory, "TINY.WB");
+  await writeFile(tiny, Buffer.from([0x00, 0x00, 0x00, 0x33]));
+  const tinyResult = await inspect(tiny);
+  if (tinyResult.result.format !== "compiled-program")
+    throw new Error("expected a compiled-program observation");
+  expect(tinyResult.result.limitations.join(" ")).toContain(
+    "Header layout checks failed",
+  );
 
   const runtimeConfig = await inspect(config);
   if (runtimeConfig.result.format !== "runtime-config")

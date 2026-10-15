@@ -10,7 +10,7 @@ export const indexBusinessRulesRuntimeConfig = (
   text: string,
 ): BusinessRulesRuntimeConfig => {
   const directives: BusinessRulesRuntimeConfig["directives"] = [];
-  for (const [index, rawLine] of text.split(/\r\n|\n/u).entries()) {
+  for (const [index, rawLine] of text.split(/\r\n|\r|\n/u).entries()) {
     const line = rawLine.trim();
     if (line === "" || COMMENT.test(line)) continue;
     directives.push({

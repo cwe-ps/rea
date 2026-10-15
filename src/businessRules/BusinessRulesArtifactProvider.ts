@@ -19,6 +19,7 @@ import {
 import { err, ok, type Result } from "../domain/result.js";
 import {
   COMPILED_OBSERVATION_LIMITATIONS,
+  compiledObservationTruncationLimitations,
   observeBusinessRulesCompiledProgram,
 } from "./BusinessRulesCompiledObservation.js";
 import { readBusinessRulesHeader } from "./BusinessRulesDecoder.js";
@@ -26,6 +27,7 @@ import {
   isBusinessRulesText,
   readBusinessRulesFile,
 } from "./BusinessRulesFileRead.js";
+import { decodeBusinessRulesProgram } from "./BusinessRulesProgramProvider.js";
 import { BUSINESS_RULES_ARTIFACT_PROVIDER_IDENTITY } from "./BusinessRulesRelease.js";
 import { indexBusinessRulesRuntimeConfig } from "./BusinessRulesRuntimeConfig.js";
 import {
@@ -76,6 +78,41 @@ const unsupported = (
     remediationAction === undefined ? undefined : { remediationAction },
   );
 
+/**
+ * Cross-check the observation against the full decoder: name any damage it
+ * finds beyond the header, any facet it leaves undecoded, or confirm a clean
+ * decode. Only called once the header layout checks pass.
+ */
+const decodeCrossCheck = (
+  path: string,
+  data: Uint8Array,
+  sha256: string,
+): string => {
+  const decoded = decodeBusinessRulesProgram(path, data, sha256);
+  if (!decoded.ok)
+    return `Cross-check: full decoding with inspect_business_rules_program could not complete (${decoded.error.message}).`;
+  const { program } = decoded.value;
+  const damaged: string[] = [];
+  if (program.listing.status === "malformed")
+    damaged.push(`listing (${program.listing.reason ?? "malformed"})`);
+  if (program.symbols.status === "malformed")
+    damaged.push(`symbols (${program.symbols.reason ?? "malformed"})`);
+  if (program.stripped_legacy?.line_table.status === "malformed")
+    damaged.push(
+      `stripped legacy line table (${program.stripped_legacy.line_table.reason ?? "malformed"})`,
+    );
+  if (damaged.length > 0)
+    return `Cross-check: full decoding found damage beyond the header — ${damaged.join("; ")}.`;
+  const undecoded: string[] = [];
+  if (program.listing.status === "unsupported")
+    undecoded.push(`listing (${program.listing.reason ?? "unsupported"})`);
+  if (program.symbols.status === "unsupported")
+    undecoded.push(`symbols (${program.symbols.reason ?? "unsupported"})`);
+  if (undecoded.length > 0)
+    return `Cross-check: inspect_business_rules_program decodes this file, leaving ${undecoded.join("; ")} undecoded.`;
+  return "Cross-check: inspect_business_rules_program decodes this file cleanly.";
+};
+
 /** Classify the selected bytes and parse the matching facet. */
 export const parseBusinessRulesArtifact = (
   path: string,
@@ -86,12 +123,11 @@ export const parseBusinessRulesArtifact = (
   const program = observeBusinessRulesCompiledProgram(data);
   if (program !== null) {
     const header = readBusinessRulesHeader(data);
-    const damage =
-      !header.ok && header.error.kind === "malformed"
-        ? [
-            `Declared section layout is inconsistent (${header.error.message}); inspect_business_rules_program rejects the file, so only raw byte observations are reported.`,
-          ]
-        : [];
+    const checks = header.ok
+      ? [decodeCrossCheck(path, data, sha256)]
+      : [
+          `Header layout checks failed (${header.error.message}); inspect_business_rules_program rejects this file, so only raw byte observations are reported.`,
+        ];
     return ok({
       ...base,
       format: "compiled-program",
@@ -109,7 +145,11 @@ export const parseBusinessRulesArtifact = (
             },
       program,
       decode_with: "inspect_business_rules_program",
-      limitations: [...COMPILED_OBSERVATION_LIMITATIONS, ...damage],
+      limitations: [
+        ...COMPILED_OBSERVATION_LIMITATIONS,
+        ...compiledObservationTruncationLimitations(program),
+        ...checks,
+      ],
     });
   }
   const name = basename(path).toLowerCase();
@@ -123,7 +163,7 @@ export const parseBusinessRulesArtifact = (
       classification: {
         basis: "extension-and-content",
         detail:
-          "WBCONFIG.SYS runtime-configuration name over printable directive text.",
+          "Whole-file-name match (WBCONFIG.SYS) over printable directive text.",
       },
       config: indexBusinessRulesRuntimeConfig(text ?? ""),
       limitations: CONFIG_LIMITATIONS,
@@ -135,7 +175,7 @@ export const parseBusinessRulesArtifact = (
       classification: {
         basis: "extension-only",
         detail:
-          "SCREEN session screen-definition name; the content carries no verified signature and the fixed-record layout is not decoded.",
+          "SCREEN.<number> session screen-definition name; the content carries no verified signature and the fixed-record layout is not decoded.",
       },
       limitations: SCREEN_LIMITATIONS,
     });
