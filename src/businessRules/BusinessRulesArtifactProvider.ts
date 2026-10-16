@@ -106,6 +106,10 @@ const decodeCrossCheck = (
   const undecoded: string[] = [];
   if (program.listing.status === "unsupported")
     undecoded.push(`listing (${program.listing.reason ?? "unsupported"})`);
+  if (program.listing.status === "absent")
+    undecoded.push(
+      "listing (stripped program — no saved LIST; program text is unknown)",
+    );
   if (program.symbols.status === "unsupported")
     undecoded.push(`symbols (${program.symbols.reason ?? "unsupported"})`);
   if (undecoded.length > 0)

@@ -12,6 +12,7 @@ import {
 import {
   body,
   legacyProgram,
+  legacyStrippedProgram,
   modernProgram,
 } from "../../tests/fixtures/businessRules/program.js";
 import { AnalysisUnsupportedTargetError } from "../domain/analysisErrorCore.js";
@@ -270,6 +271,25 @@ describe("Business Rules! compiled programs", () => {
     expect(artifact.limitations.join(" ")).toContain(
       "decodes this file cleanly",
     );
+  });
+
+  it("reports a stripped program's absent listing as undecoded, not clean", () => {
+    const artifact = parse(
+      "/programs/STRIPPED.WB",
+      legacyStrippedProgram(
+        [{ number: 5 }, { number: 10 }, { number: 20 }],
+        Buffer.concat([
+          Buffer.from("CUSTNAME$", "latin1"),
+          Buffer.from([0x00, 0x09, 0x00]),
+        ]),
+      ),
+    );
+    if (artifact.format !== "compiled-program")
+      throw new Error(artifact.format);
+    const limitations = artifact.limitations.join(" ");
+    expect(limitations).toContain("leaving listing");
+    expect(limitations).toContain("stripped");
+    expect(limitations).not.toContain("decodes this file cleanly");
   });
 
   it("reads marker fields from the bytes instead of assuming the constant", () => {
